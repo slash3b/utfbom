@@ -1,3 +1,3 @@
-module github.com/dimchansky/utfbom
+module github.com/slash3b/utfbom
 
-go 1.19
+go 1.24
