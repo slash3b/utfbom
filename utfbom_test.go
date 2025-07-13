@@ -91,6 +91,31 @@ func TestDetectBom(t *testing.T) {
 	}
 }
 
+func ExampleDetectEncoding() {
+    input := "\ufeffhey"
+    fmt.Printf("input string: %q\n", input)
+    fmt.Printf("input bytes: %#x\n", input)
+
+    enc := utfbom.DetectEncoding(input)
+    fmt.Printf("detected encoding: %s\n", enc)
+
+    fmt.Printf("is UTF16:%v\n", enc.AnyOf(utfbom.UTF16BigEndian, utfbom.UTF16LittleEndian))
+    fmt.Printf("is UTF8:%v\n", enc.AnyOf(utfbom.UTF8))
+
+    output := utfbom.Trim(input, enc)
+    fmt.Printf("output string: %q\n", output)
+    fmt.Printf("output bytes:%#x\n", output)
+
+    // output:
+    // input string: "\ufeffhey"
+    // input bytes: 0xefbbbf686579
+    // detected encoding: UTF8
+    // is UTF16:false
+    // is UTF8:true
+    // output string: "hey"
+    // output bytes:0x686579
+}
+
 var testCases = []struct {
 	name       string
 	input      []byte

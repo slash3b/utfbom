@@ -37,11 +37,11 @@ const (
 // If no known BOM is found, it returns Unknown.
 //
 // Supported encodings:
-//   - UTF-8 (BOM: 0xEF 0xBB 0xBF)
-//   - UTF-16 Big Endian (BOM: 0xFE 0xFF)
-//   - UTF-16 Little Endian (BOM: 0xFF 0xFE)
-//   - UTF-32 Big Endian (BOM: 0x00 0x00 0xFE 0xFF)
-//   - UTF-32 Little Endian (BOM: 0xFF 0xFE 0x00 0x00)
+//   - UTF-8 (BOM: 0xef 0xbb 0xbf)
+//   - UTF-16 Big Endian (BOM: 0xfe 0xff)
+//   - UTF-16 Little Endian (BOM: 0xff 0xfe)
+//   - UTF-32 Big Endian (BOM: 0x00 0x00 0xfe 0xff)
+//   - UTF-32 Little Endian (BOM: 0xff 0xfe 0x00 0x00)
 func DetectEncoding[T string | []byte](b T) Encoding {
 	i := []byte(b)
 
@@ -109,13 +109,22 @@ func (e Encoding) String() string {
 	}
 }
 
-// func (e Encoding) RemoveBOM(s string) string {
-//  if e == UTF8 {
-//   return strings.TrimPrefix(s, unicodeBOM)
-//  }
+// Trim removes the BOM prefix from the input `s` based on the encoding `enc`.
+// Supports string or []byte inputs and returns the same type without the BOM.
+func Trim[T string | []byte](s T, enc Encoding) T {
+	b := []byte(s)
 
-//  return s
-// }
+	switch enc {
+	case UTF8:
+		b = b[3:]
+	case UTF16BigEndian, UTF16LittleEndian:
+		b = b[2:]
+	case UTF32BigEndian, UTF32LittleEndian:
+		b = b[4:]
+	}
+
+	return T(b)
+}
 
 const maxConsecutiveEmptyReads = 100
 
