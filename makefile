@@ -6,7 +6,7 @@ test:
 	go test -v -race -shuffle=on -timeout=1m -count=1
 
 test-coverage:
-	go test -race -failfast -shuffle=on -timeout=1m -count=1 -cover -coverprofile=out.html
+	@go test -race -failfast -shuffle=on -timeout=1m -count=1 -cover -coverprofile=out.html
 	go tool cover -covermode=atomic -html=out.html
 
 install-tools:
@@ -14,8 +14,8 @@ install-tools:
 	go install github.com/daixiang0/gci@v0.13.6
 
 fmt:
-	gofumpt -w -extra .
-	gci write \
+	@gofumpt -w -extra .
+	@gci write \
 			--custom-order \
 			--section standard \
 			--section default \

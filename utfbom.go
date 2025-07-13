@@ -1,6 +1,8 @@
-// Package utfbom implements the detection of the BOM (Unicode Byte Order Mark) and removing as necessary.
-// It wraps an io.Reader object, creating another object (Reader) that also implements the io.Reader
-// interface but provides automatic BOM checking and removing as necessary.
+// Package utfbom provides utilities for handling the Unicode Byte Order Mark (BOM).
+//
+// It detects the type of BOM present in data,
+// offers functions to strip the BOM from strings or byte slices,
+// and includes an io.Reader wrapper that automatically detects and removes the BOM during reading.
 package utfbom
 
 import (
@@ -8,33 +10,88 @@ import (
 	"io"
 )
 
-var _ io.Reader = (*Reader)(nil)
+var (
+	_          io.Reader = (*Reader)(nil)
+	bom        rune      = '\uFEFF'
+	utf8BOM              = [3]byte{0xef, 0xbb, 0xbf}
+	utf16BEBOM           = [2]byte{0xfe, 0xff}
+	utf16LEBOM           = [2]byte{0xff, 0xfe}
+	utf32BEBOM           = [4]byte{0x00, 0x00, 0xfe, 0xff}
+	utf32LEBOM           = [4]byte{0xff, 0xfe, 0x00, 0x00}
+)
 
-// Encoding is type alias for detected UTF encoding.
+// Encoding is a character encoding standard.
 type Encoding int
 
-// Constants to identify detected UTF encodings.
 const (
-	// Unknown encoding, returned when no BOM was detected
 	Unknown Encoding = iota
-
-	// UTF8, BOM bytes: EF BB BF
 	UTF8
-
-	// UTF-16, big-endian, BOM bytes: FE FF
 	UTF16BigEndian
-
-	// UTF-16, little-endian, BOM bytes: FF FE
 	UTF16LittleEndian
-
-	// UTF-32, big-endian, BOM bytes: 00 00 FE FF
 	UTF32BigEndian
-
-	// UTF-32, little-endian, BOM bytes: FF FE 00 00
 	UTF32LittleEndian
 )
 
-// String returns a user-friendly string representation of the encoding. Satisfies fmt.Stringer interface.
+// DetectEncoding inspects the initial bytes of a string or byte slice (T)
+// and returns the detected text encoding based on the presence of known BOMs (Byte Order Marks).
+// If no known BOM is found, it returns Unknown.
+//
+// Supported encodings:
+//   - UTF-8 (BOM: 0xEF 0xBB 0xBF)
+//   - UTF-16 Big Endian (BOM: 0xFE 0xFF)
+//   - UTF-16 Little Endian (BOM: 0xFF 0xFE)
+//   - UTF-32 Big Endian (BOM: 0x00 0x00 0xFE 0xFF)
+//   - UTF-32 Little Endian (BOM: 0xFF 0xFE 0x00 0x00)
+func DetectEncoding[T string | []byte](b T) Encoding {
+	i := []byte(b)
+
+	if len(i) < 2 {
+		return Unknown
+	}
+
+	if len(i) >= 4 {
+		if utf32BEBOM[0] == i[0] &&
+			utf32BEBOM[1] == i[1] &&
+			utf32BEBOM[2] == i[2] &&
+			utf32BEBOM[3] == i[3] {
+			return UTF32BigEndian
+		}
+
+		if utf32LEBOM[0] == i[0] &&
+			utf32LEBOM[1] == i[1] &&
+			utf32LEBOM[2] == i[2] &&
+			utf32LEBOM[3] == i[3] {
+			return UTF32LittleEndian
+		}
+	}
+
+	if len(i) >= 3 {
+		if utf8BOM[0] == i[0] && utf8BOM[1] == i[1] && utf8BOM[2] == i[2] {
+			return UTF8
+		}
+	}
+
+	if utf16BEBOM[0] == i[0] && utf16BEBOM[1] == i[1] {
+		return UTF16BigEndian
+	}
+
+	if utf16LEBOM[0] == i[0] && utf16LEBOM[1] == i[1] {
+		return UTF16LittleEndian
+	}
+
+	return Unknown
+}
+
+func (e Encoding) AnyOf(es ...Encoding) bool {
+	for _, enc := range es {
+		if enc == e {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (e Encoding) String() string {
 	switch e {
 	case UTF8:
@@ -51,6 +108,14 @@ func (e Encoding) String() string {
 		return "Unknown"
 	}
 }
+
+// func (e Encoding) RemoveBOM(s string) string {
+//  if e == UTF8 {
+//   return strings.TrimPrefix(s, unicodeBOM)
+//  }
+
+//  return s
+// }
 
 const maxConsecutiveEmptyReads = 100
 

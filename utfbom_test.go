@@ -10,8 +10,86 @@ import (
 	"testing/iotest"
 	"time"
 
-	"github.com/dimchansky/utfbom"
+	"github.com/slash3b/utfbom"
 )
+
+func TestDetectBom(t *testing.T) {
+	testCases := []struct {
+		name     string
+		input    []byte
+		expected utfbom.Encoding
+	}{
+		{
+			name:     "empty",
+			input:    nil,
+			expected: utfbom.Unknown,
+		},
+		{
+			name:     "no_encoding",
+			input:    []byte("hello"),
+			expected: utfbom.Unknown,
+		},
+		{
+			name:     "bom_located_in_unexpected_place",
+			input:    []byte("hello\ufeff"),
+			expected: utfbom.Unknown,
+		},
+		{
+			name:     "utf8_detected_from_string_literal",
+			input:    []byte("\ufeffhello"),
+			expected: utfbom.UTF8,
+		},
+		{
+			name:     "utf16_big_endian_detected_and_some_text",
+			input:    []byte{0xfe, 0xff, 'h', 'e', 'y'},
+			expected: utfbom.UTF16BigEndian,
+		},
+		{
+			name:     "utf16_big_endian_detected",
+			input:    []byte{0xfe, 0xff},
+			expected: utfbom.UTF16BigEndian,
+		},
+		{
+			name:     "utf16_little_endian_detected_and_some_text",
+			input:    []byte{0xff, 0xfe, 'h', 'e', 'y'},
+			expected: utfbom.UTF16LittleEndian,
+		},
+		{
+			name:     "utf16_little_endian_detected",
+			input:    []byte{0xff, 0xfe},
+			expected: utfbom.UTF16LittleEndian,
+		},
+		{
+			name:     "utf32_big_endian_detected_and_some_text",
+			input:    []byte{0x0, 0x0, 0xfe, 0xff, 'h', 'e', 'y'},
+			expected: utfbom.UTF32BigEndian,
+		},
+		{
+			name:     "utf32_big_endian_detected",
+			input:    []byte{0x0, 0x0, 0xfe, 0xff},
+			expected: utfbom.UTF32BigEndian,
+		},
+		{
+			name:     "utf32_little_endian_detected_and_some_text",
+			input:    []byte{0xff, 0xfe, 0x0, 0x0, 'h', 'e', 'y'},
+			expected: utfbom.UTF32LittleEndian,
+		},
+		{
+			name:     "utf32_little_endian_detected",
+			input:    []byte{0xff, 0xfe, 0x0, 0x0},
+			expected: utfbom.UTF32LittleEndian,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			enc := utfbom.DetectEncoding(tc.input)
+			if enc != tc.expected {
+				t.Errorf("unexpected encoding %s, expected is %s\n", enc, tc.expected)
+			}
+		})
+	}
+}
 
 var testCases = []struct {
 	name       string
