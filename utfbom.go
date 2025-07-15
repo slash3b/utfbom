@@ -7,7 +7,9 @@ package utfbom
 
 import (
 	"errors"
+	"fmt"
 	"io"
+	"sync"
 )
 
 var (
@@ -109,6 +111,19 @@ func (e Encoding) String() string {
 	}
 }
 
+func (e Encoding) Len() int {
+	switch e {
+	default:
+		return 0
+	case UTF8:
+		return 3
+	case UTF16BigEndian, UTF16LittleEndian:
+		return 2
+	case UTF32BigEndian, UTF32LittleEndian:
+		return 4
+	}
+}
+
 // Trim removes the BOM prefix from the input `s` based on the encoding `enc`.
 // Supports string or []byte inputs and returns the same type without the BOM.
 func Trim[T string | []byte](s T, enc Encoding) T {
@@ -126,145 +141,58 @@ func Trim[T string | []byte](s T, enc Encoding) T {
 	return T(b)
 }
 
-const maxConsecutiveEmptyReads = 100
-
-// Skip creates Reader which automatically detects BOM (Unicode Byte Order Mark) and removes it as necessary.
-// It also returns the encoding detected by the BOM.
-// If the detected encoding is not needed, you can call the SkipOnly function.
-func Skip(rd io.Reader) (*Reader, Encoding) {
-	// Is it already a Reader?
-	b, ok := rd.(*Reader)
-	if ok {
-		return b, b.enc
-	}
-
-	enc, left, err := detectUtf(rd)
+func NewReader(rd io.Reader) *Reader {
 	return &Reader{
-		rd:  rd,
-		buf: left,
-		err: err,
-		enc: enc,
-	}, enc
-}
-
-// SkipOnly creates Reader which automatically detects BOM (Unicode Byte Order Mark) and removes it as necessary.
-func SkipOnly(rd io.Reader) *Reader {
-	r, _ := Skip(rd)
-	return r
+		rd: rd,
+	}
 }
 
 // Reader implements automatic BOM (Unicode Byte Order Mark) checking and
 // removing as necessary for an io.Reader object.
 type Reader struct {
-	rd  io.Reader // reader provided by the client
-	buf []byte    // buffered data
-	err error     // last error
-	enc Encoding  // encoding
+	rd   io.Reader
+	once sync.Once
+	// Enc will be available after first read
+	Enc Encoding
 }
 
 // Read is an implementation of io.Reader interface.
 // The bytes are taken from the underlying Reader, but it checks for BOMs, removing them as necessary.
-func (r *Reader) Read(p []byte) (n int, err error) {
+// todo: rewrite this, tries to be concurrently safe but depends totally on underlying Reader implementation.
+func (r *Reader) Read(p []byte) (int, error) {
+	const maxBOMLen = 4
+
 	if len(p) == 0 {
-		return 0, nil
+		return 0, io.ErrShortBuffer
 	}
 
-	if r.buf == nil {
-		if r.err != nil {
-			return 0, r.readErr()
+	var (
+		n   int
+		err error
+	)
+
+	r.once.Do(func() {
+		if len(p) < maxBOMLen {
+			err = errors.Join(fmt.Errorf("min buffer lenght required: %d", maxBOMLen), io.ErrShortBuffer)
 		}
 
-		return r.rd.Read(p)
-	}
-
-	// copy as much as we can
-	n = copy(p, r.buf)
-	r.buf = nilIfEmpty(r.buf[n:])
-	return n, nil
-}
-
-func (r *Reader) readErr() error {
-	err := r.err
-	r.err = nil
-	return err
-}
-
-var errNegativeRead = errors.New("utfbom: reader returned negative count from Read")
-
-func detectUtf(rd io.Reader) (enc Encoding, buf []byte, err error) {
-	buf, err = readBOM(rd)
-
-	if len(buf) >= 4 {
-		if isUTF32BigEndianBOM4(buf) {
-			return UTF32BigEndian, nilIfEmpty(buf[4:]), err
+		s := make([]byte, len(p))
+		n, err = r.rd.Read(s)
+		if err != nil {
+			return
 		}
-		if isUTF32LittleEndianBOM4(buf) {
-			return UTF32LittleEndian, nilIfEmpty(buf[4:]), err
-		}
+		r.Enc = DetectEncoding(s)
+		s = Trim(s, r.Enc)
+		n = n - r.Enc.Len()
+
+		copy(p, s[:n])
+	})
+
+	if n > 0 || err != nil {
+		return n, err
 	}
 
-	if len(buf) > 2 && isUTF8BOM3(buf) {
-		return UTF8, nilIfEmpty(buf[3:]), err
-	}
+	n, err = r.rd.Read(p)
 
-	if (err != nil && err != io.EOF) || (len(buf) < 2) {
-		return Unknown, nilIfEmpty(buf), err
-	}
-
-	if isUTF16BigEndianBOM2(buf) {
-		return UTF16BigEndian, nilIfEmpty(buf[2:]), err
-	}
-	if isUTF16LittleEndianBOM2(buf) {
-		return UTF16LittleEndian, nilIfEmpty(buf[2:]), err
-	}
-
-	return Unknown, nilIfEmpty(buf), err
-}
-
-func readBOM(rd io.Reader) (buf []byte, err error) {
-	const maxBOMSize = 4
-	var bom [maxBOMSize]byte // used to read BOM
-
-	// read as many bytes as possible
-	for nEmpty, n := 0, 0; err == nil && len(buf) < maxBOMSize; buf = bom[:len(buf)+n] {
-		if n, err = rd.Read(bom[len(buf):]); n < 0 {
-			panic(errNegativeRead)
-		}
-		if n > 0 {
-			nEmpty = 0
-		} else {
-			nEmpty++
-			if nEmpty >= maxConsecutiveEmptyReads {
-				err = io.ErrNoProgress
-			}
-		}
-	}
-	return
-}
-
-func isUTF32BigEndianBOM4(buf []byte) bool {
-	return buf[0] == 0x00 && buf[1] == 0x00 && buf[2] == 0xFE && buf[3] == 0xFF
-}
-
-func isUTF32LittleEndianBOM4(buf []byte) bool {
-	return buf[0] == 0xFF && buf[1] == 0xFE && buf[2] == 0x00 && buf[3] == 0x00
-}
-
-func isUTF8BOM3(buf []byte) bool {
-	return buf[0] == 0xEF && buf[1] == 0xBB && buf[2] == 0xBF
-}
-
-func isUTF16BigEndianBOM2(buf []byte) bool {
-	return buf[0] == 0xFE && buf[1] == 0xFF
-}
-
-func isUTF16LittleEndianBOM2(buf []byte) bool {
-	return buf[0] == 0xFF && buf[1] == 0xFE
-}
-
-func nilIfEmpty(buf []byte) (res []byte) {
-	if len(buf) > 0 {
-		res = buf
-	}
-	return
+	return n, err
 }

@@ -1,9 +1,7 @@
 # utfbom
 [![Godoc](https://godoc.org/github.com/slash3b/utfbom?status.png)](https://godoc.org/github.com/slash3b/utfbom) 
 [![License](https://img.shields.io/:license-apache-blue.svg)](https://opensource.org/licenses/Apache-2.0) 
-[![Build Status](https://travis-ci.org/slash3b/utfbom.svg?branch=master)](https://travis-ci.org/slash3b/utfbom) 
 [![Go Report Card](https://goreportcard.com/badge/github.com/slash3b/utfbom)](https://goreportcard.com/report/github.com/slash3b/utfbom) 
-[![Coverage Status](https://coveralls.io/repos/github/slash3b/utfbom/badge.svg?branch=master)](https://coveralls.io/github/slash3b/utfbom?branch=master)
 
 Package `utfbom` is able to detect and remove the Unicode Byte Order Mark (BOM) from input streams.
 // todo add more

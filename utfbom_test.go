@@ -2,13 +2,13 @@ package utfbom_test
 
 import (
 	"bytes"
-	"errors"
+	"encoding/csv"
+	"encoding/hex"
 	"fmt"
 	"io"
-	"reflect"
+	"strings"
 	"testing"
 	"testing/iotest"
-	"time"
 
 	"github.com/slash3b/utfbom"
 )
@@ -92,28 +92,62 @@ func TestDetectBom(t *testing.T) {
 }
 
 func ExampleDetectEncoding() {
-    input := "\ufeffhey"
-    fmt.Printf("input string: %q\n", input)
-    fmt.Printf("input bytes: %#x\n", input)
+	input := "\ufeffhey"
+	fmt.Printf("input string: %q\n", input)
+	fmt.Printf("input bytes: %#x\n", input)
 
-    enc := utfbom.DetectEncoding(input)
-    fmt.Printf("detected encoding: %s\n", enc)
+	enc := utfbom.DetectEncoding(input)
+	fmt.Printf("detected encoding: %s\n", enc)
 
-    fmt.Printf("is UTF16:%v\n", enc.AnyOf(utfbom.UTF16BigEndian, utfbom.UTF16LittleEndian))
-    fmt.Printf("is UTF8:%v\n", enc.AnyOf(utfbom.UTF8))
+	fmt.Printf("is UTF16:%v\n", enc.AnyOf(utfbom.UTF16BigEndian, utfbom.UTF16LittleEndian))
+	fmt.Printf("is UTF8:%v\n", enc.AnyOf(utfbom.UTF8))
 
-    output := utfbom.Trim(input, enc)
-    fmt.Printf("output string: %q\n", output)
-    fmt.Printf("output bytes:%#x\n", output)
+	output := utfbom.Trim(input, enc)
+	fmt.Printf("output string: %q\n", output)
+	fmt.Printf("output bytes:%#x\n", output)
 
-    // output:
-    // input string: "\ufeffhey"
-    // input bytes: 0xefbbbf686579
-    // detected encoding: UTF8
-    // is UTF16:false
-    // is UTF8:true
-    // output string: "hey"
-    // output bytes:0x686579
+	// output:
+	// input string: "\ufeffhey"
+	// input bytes: 0xefbbbf686579
+	// detected encoding: UTF8
+	// is UTF16:false
+	// is UTF8:true
+	// output string: "hey"
+	// output bytes:0x686579
+}
+
+func ExampleReader() {
+	csvFile := "\uFEFFIndex,Customer Id,First Name\n" +
+		"1,DD37Cf93aecA6Dc,Sheryl"
+
+	fmt.Println("before")
+	fmt.Print(hex.Dump([]byte(csvFile)))
+	ur := csv.NewReader(utfbom.NewReader(bytes.NewReader([]byte(csvFile))))
+
+	out := ""
+	for {
+		row, err := ur.Read()
+		if err != nil {
+			break
+		}
+
+		out += strings.Join(row, ",")
+	}
+
+	fmt.Println("after")
+	fmt.Print(hex.Dump([]byte(out)))
+
+	// output:
+	// before
+	// 00000000  ef bb bf 49 6e 64 65 78  2c 43 75 73 74 6f 6d 65  |...Index,Custome|
+	// 00000010  72 20 49 64 2c 46 69 72  73 74 20 4e 61 6d 65 0a  |r Id,First Name.|
+	// 00000020  31 2c 44 44 33 37 43 66  39 33 61 65 63 41 36 44  |1,DD37Cf93aecA6D|
+	// 00000030  63 2c 53 68 65 72 79 6c                           |c,Sheryl|
+	// after
+	// 00000000  49 6e 64 65 78 2c 43 75  73 74 6f 6d 65 72 20 49  |Index,Customer I|
+	// 00000010  64 2c 46 69 72 73 74 20  4e 61 6d 65 31 2c 44 44  |d,First Name1,DD|
+	// 00000020  33 37 43 66 39 33 61 65  63 41 36 44 63 2c 53 68  |37Cf93aecA6Dc,Sh|
+	// 00000030  65 72 79 6c                                       |eryl|
 }
 
 var testCases = []struct {
@@ -207,6 +241,7 @@ var readMakers = []struct {
 	{"byte", iotest.OneByteReader},
 }
 
+/*
 func TestSkip(t *testing.T) {
 	t.Parallel()
 
@@ -452,3 +487,6 @@ func ExampleSkip() {
 	// Detected encoding: UTF8
 	// ReadAll with BOM detection and skipping [104 101 108 108 111]
 }
+
+
+*/
