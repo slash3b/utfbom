@@ -6,8 +6,6 @@
 package utfbom
 
 import (
-	"errors"
-	"fmt"
 	"io"
 	"sync"
 )
@@ -156,14 +154,16 @@ type Reader struct {
 	Enc Encoding
 }
 
-// Read is an implementation of io.Reader interface.
-// The bytes are taken from the underlying Reader, but it checks for BOMs, removing them as necessary.
-// todo: rewrite this, tries to be concurrently safe but depends totally on underlying Reader implementation.
+// Read implements the io.Reader interface.
+// On the first read call, it reads from the underlying Reader, detects and removes any Byte Order Mark (BOM).
+// Subsequent calls delegate directly to the underlying Reader without BOM handling.
+// Read is only safe for concurrent use during the first call due to sync.Once; after that, thread-safety
+// depends on the underlying Reader. It is best to assume unsafe concurrent use.
 func (r *Reader) Read(p []byte) (int, error) {
 	const maxBOMLen = 4
 
 	if len(p) == 0 {
-		return 0, io.ErrShortBuffer
+		return 0, nil
 	}
 
 	var (
@@ -173,7 +173,8 @@ func (r *Reader) Read(p []byte) (int, error) {
 
 	r.once.Do(func() {
 		if len(p) < maxBOMLen {
-			err = errors.Join(fmt.Errorf("min buffer lenght required: %d", maxBOMLen), io.ErrShortBuffer)
+			err = io.ErrShortBuffer
+			return
 		}
 
 		s := make([]byte, len(p))
