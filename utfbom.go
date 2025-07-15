@@ -12,7 +12,6 @@ import (
 
 var (
 	_          io.Reader = (*Reader)(nil)
-	bom        rune      = '\uFEFF'
 	utf8BOM              = [3]byte{0xef, 0xbb, 0xbf}
 	utf16BEBOM           = [2]byte{0xfe, 0xff}
 	utf16LEBOM           = [2]byte{0xff, 0xfe}
@@ -82,6 +81,8 @@ func DetectEncoding[T string | []byte](b T) Encoding {
 	return Unknown
 }
 
+// AnyOf reports whether the Encoding value equals any of the given Encoding values.
+// It returns true if a match is found, otherwise false.
 func (e Encoding) AnyOf(es ...Encoding) bool {
 	for _, enc := range es {
 		if enc == e {
@@ -92,6 +93,7 @@ func (e Encoding) AnyOf(es ...Encoding) bool {
 	return false
 }
 
+// Strings returns human-readable name of encoding.
 func (e Encoding) String() string {
 	switch e {
 	case UTF8:
@@ -109,6 +111,7 @@ func (e Encoding) String() string {
 	}
 }
 
+// Len returns number of bytes specific for Encoding.
 func (e Encoding) Len() int {
 	switch e {
 	default:

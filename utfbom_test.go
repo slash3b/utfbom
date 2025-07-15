@@ -5,11 +5,12 @@ import (
 	"encoding/csv"
 	"encoding/hex"
 	"fmt"
-	"github.com/slash3b/utfbom"
 	"io"
 	"strings"
 	"testing"
 	"testing/iotest"
+
+	"github.com/slash3b/utfbom"
 )
 
 func TestDetectBom(t *testing.T) {

@@ -1,4 +1,4 @@
-.PHONY:all, test, test-coverage, install-tools, fmt, vet
+.PHONY:all test test-coverage install-tools fmt vet
 
 all: fmt test
 
