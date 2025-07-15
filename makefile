@@ -7,7 +7,7 @@ test:
 
 test-coverage:
 	@go test -race -failfast -shuffle=on -timeout=1m -count=1 -cover -coverprofile=out.html
-	go tool cover -covermode=atomic -html=out.html
+	@go tool cover -html=out.html
 
 install-tools:
 	go install mvdan.cc/gofumpt@v0.8.0
