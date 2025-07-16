@@ -8,7 +8,6 @@ import (
 	"io"
 	"strings"
 	"testing"
-	"testing/iotest"
 
 	"github.com/slash3b/utfbom"
 )
@@ -154,6 +153,68 @@ func ExampleReader() {
 	//00000030  65 72 79 6c                                       |eryl|
 }
 
+func TestEncoding_String(t *testing.T) {
+	t.Parallel()
+
+	for e := utfbom.Unknown; e <= utfbom.UTF32LittleEndian; e++ {
+		s := e.String()
+		if s == "" {
+			t.Errorf("no string for %#v", e)
+		}
+	}
+
+	s := utfbom.Encoding(999).String()
+	if s != "Unknown" {
+		t.Errorf("wrong string '%s' for invalid encoding", s)
+	}
+}
+
+func TestEncoding_Len(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		enc      utfbom.Encoding
+		expected int
+	}{
+		{
+			enc:      utfbom.Unknown,
+			expected: 0,
+		},
+		{
+			enc:      utfbom.UTF8,
+			expected: 3,
+		},
+		{
+			enc:      utfbom.UTF16BigEndian,
+			expected: 2,
+		},
+		{
+			enc:      utfbom.UTF16LittleEndian,
+			expected: 2,
+		},
+		{
+			enc:      utfbom.UTF32BigEndian,
+			expected: 4,
+		},
+		{
+			enc:      utfbom.UTF32LittleEndian,
+			expected: 4,
+		},
+		{
+			enc:      999,
+			expected: 0,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.enc.String(), func(t *testing.T) {
+			if got := tc.enc.Len(); got != tc.expected {
+				t.Errorf("got %d, want %d", got, tc.expected)
+			}
+		})
+	}
+}
+
 var testCases = []struct {
 	name       string
 	input      []byte
@@ -205,292 +266,3 @@ var testCases = []struct {
 	{"22", []byte("\xFF"), io.ErrClosedPipe, utfbom.Unknown, []byte{0xFF}},
 	{"23", []byte("\x68\x65"), nil, utfbom.Unknown, []byte{0x68, 0x65}},
 }
-
-type sliceReader struct {
-	input      []byte
-	inputError error
-}
-
-func (r *sliceReader) Read(p []byte) (n int, err error) {
-	if len(p) == 0 {
-		return
-	}
-
-	if err = r.getError(); err != nil {
-		return
-	}
-
-	n = copy(p, r.input)
-	r.input = r.input[n:]
-	err = r.getError()
-	return
-}
-
-func (r *sliceReader) getError() (err error) {
-	if len(r.input) == 0 {
-		if r.inputError == nil {
-			err = io.EOF
-		} else {
-			err = r.inputError
-		}
-	}
-	return
-}
-
-var readMakers = []struct {
-	name string
-	fn   func(io.Reader) io.Reader
-}{
-	{"full", func(r io.Reader) io.Reader { return r }},
-	{"byte", iotest.OneByteReader},
-}
-
-/*
-func TestSkip(t *testing.T) {
-	t.Parallel()
-
-	for _, tc := range testCases {
-		tc := tc
-		t.Run("test "+tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			for _, readMaker := range readMakers {
-				readMaker := readMaker
-				t.Run("reader="+readMaker.name, func(t *testing.T) {
-					t.Parallel()
-
-					r := readMaker.fn(&sliceReader{tc.input, tc.inputError})
-
-					sr, enc := utfbom.Skip(r)
-					if enc != tc.encoding {
-						t.Fatalf("expected encoding %v, but got %v", tc.encoding, enc)
-					}
-
-					output, err := io.ReadAll(sr)
-					if !reflect.DeepEqual(output, tc.output) {
-						t.Fatalf("expected to read %+#v, but got %+#v", tc.output, output)
-					}
-					if !errors.Is(err, tc.inputError) {
-						t.Fatalf("expected to get %+#v error, but got %+#v", tc.inputError, err)
-					}
-				})
-			}
-		})
-	}
-}
-
-func TestSkipSkip(t *testing.T) {
-	t.Parallel()
-
-	for _, tc := range testCases {
-		tc := tc
-		t.Run("test "+tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			for _, readMaker := range readMakers {
-				readMaker := readMaker
-				t.Run("reader="+readMaker.name, func(t *testing.T) {
-					t.Parallel()
-
-					r := readMaker.fn(&sliceReader{tc.input, tc.inputError})
-
-					sr0, _ := utfbom.Skip(r)
-					sr, enc := utfbom.Skip(sr0)
-					if enc != tc.encoding {
-						t.Fatalf("expected encoding %v, but got %v", tc.encoding, enc)
-					}
-
-					output, err := io.ReadAll(sr)
-					if !reflect.DeepEqual(output, tc.output) {
-						t.Fatalf("expected to read %+#v, but got %+#v", tc.output, output)
-					}
-					if !errors.Is(err, tc.inputError) {
-						t.Fatalf("expected to get %+#v error, but got %+#v", tc.inputError, err)
-					}
-				})
-			}
-		})
-	}
-}
-
-func TestSkipOnly(t *testing.T) {
-	t.Parallel()
-
-	for _, tc := range testCases {
-		tc := tc
-		t.Run("test "+tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			for _, readMaker := range readMakers {
-				readMaker := readMaker
-				t.Run("reader="+readMaker.name, func(t *testing.T) {
-					t.Parallel()
-
-					r := readMaker.fn(&sliceReader{tc.input, tc.inputError})
-
-					sr := utfbom.SkipOnly(r)
-
-					output, err := io.ReadAll(sr)
-					if !reflect.DeepEqual(output, tc.output) {
-						t.Fatalf("expected to read %+#v, but got %+#v", tc.output, output)
-					}
-					if !errors.Is(err, tc.inputError) {
-						t.Fatalf("expected to get %+#v error, but got %+#v", tc.inputError, err)
-					}
-				})
-			}
-		})
-	}
-}
-
-type zeroReader struct{}
-
-func (zeroReader) Read(p []byte) (int, error) {
-	return 0, nil
-}
-
-type readerEncoding struct {
-	Rd  *utfbom.Reader
-	Enc utfbom.Encoding
-}
-
-func TestSkipZeroReader(t *testing.T) {
-	t.Parallel()
-
-	var z zeroReader
-
-	c := make(chan readerEncoding)
-	go func() {
-		r, enc := utfbom.Skip(z)
-		c <- readerEncoding{r, enc}
-	}()
-
-	select {
-	case re := <-c:
-		if re.Enc != utfbom.Unknown {
-			t.Error("utfbom.Unknown encoding expected")
-		} else {
-			var b [1]byte
-			n, err := re.Rd.Read(b[:])
-			if n != 0 {
-				t.Error("unexpected bytes count:", n)
-			}
-			if err != io.ErrNoProgress {
-				t.Error("unexpected error:", err)
-			}
-		}
-	case <-time.After(time.Second):
-		t.Error("test timed out (endless loop in utfbom.Skip?)")
-	}
-}
-
-func TestSkipOnlyZeroReader(t *testing.T) {
-	t.Parallel()
-
-	var z zeroReader
-
-	c := make(chan *utfbom.Reader)
-	go func() {
-		r := utfbom.SkipOnly(z)
-		c <- r
-	}()
-
-	select {
-	case r := <-c:
-		var b [1]byte
-		n, err := r.Read(b[:])
-		if n != 0 {
-			t.Error("unexpected bytes count:", n)
-		}
-		if err != io.ErrNoProgress {
-			t.Error("unexpected error:", err)
-		}
-	case <-time.After(time.Second):
-		t.Error("test timed out (endless loop in utfbom.Skip?)")
-	}
-}
-
-func TestReader_ReadEmpty(t *testing.T) {
-	t.Parallel()
-
-	for _, tc := range testCases {
-		tc := tc
-		t.Run("test "+tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			for _, readMaker := range readMakers {
-				readMaker := readMaker
-				t.Run("reader="+readMaker.name, func(t *testing.T) {
-					t.Parallel()
-
-					r := readMaker.fn(&sliceReader{tc.input, tc.inputError})
-
-					sr := utfbom.SkipOnly(r)
-
-					n, err := sr.Read(nil)
-					if n != 0 {
-						t.Fatalf("test %v reader=%s: expected to read zero bytes, but got %v", tc.name, readMaker.name, n)
-					}
-					if err != nil {
-						t.Fatalf("test %v reader=%s: expected to get <nil> error, but got %+#v", tc.name, readMaker.name, err)
-					}
-				})
-			}
-		})
-	}
-}
-
-func TestEncoding_String(t *testing.T) {
-	t.Parallel()
-
-	for e := utfbom.Unknown; e <= utfbom.UTF32LittleEndian; e++ {
-		s := e.String()
-		if s == "" {
-			t.Errorf("no string for %#v", e)
-		}
-	}
-
-	s := utfbom.Encoding(999).String()
-	if s != "Unknown" {
-		t.Errorf("wrong string '%s' for invalid encoding", s)
-	}
-}
-
-func ExampleSkipOnly() {
-	byteData := []byte("\xEF\xBB\xBFhello")
-
-	fmt.Println("Input:", byteData)
-
-	output, err := io.ReadAll(utfbom.SkipOnly(bytes.NewReader(byteData)))
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Println("ReadAll with BOM skipping", output)
-
-	// Output:
-	// Input: [239 187 191 104 101 108 108 111]
-	// ReadAll with BOM skipping [104 101 108 108 111]
-}
-
-func ExampleSkip() {
-	byteData := []byte("\xEF\xBB\xBFhello")
-
-	sr, enc := utfbom.Skip(bytes.NewReader(byteData))
-
-	fmt.Printf("Detected encoding: %s\n", enc)
-
-	output, err := io.ReadAll(sr)
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Println("ReadAll with BOM detection and skipping", output)
-
-	// Output:
-	// Detected encoding: UTF8
-	// ReadAll with BOM detection and skipping [104 101 108 108 111]
-}
-
-
-*/
