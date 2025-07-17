@@ -6,6 +6,7 @@
 package utfbom
 
 import (
+	"bufio"
 	"errors"
 	"io"
 	"sync"
@@ -21,7 +22,7 @@ var (
 )
 
 // ErrInitBufferReadError helps to trace error origin.
-var ErrInitBufferReadError = errors.New("utfbom library unable to read to a buffer")
+var ErrInitBufferReadError = errors.New("utfbom library unable to detect BOM")
 
 // Encoding is a character encoding standard.
 type Encoding int
@@ -162,7 +163,7 @@ func Trim[T string | []byte](input T) (T, Encoding) {
 // Reader implements automatic BOM (Unicode Byte Order Mark) checking and
 // removing as necessary for an io.Reader object.
 type Reader struct {
-	rd   io.Reader
+	rd   *bufio.Reader
 	once sync.Once
 	// Enc will be available after first read
 	Enc Encoding
@@ -171,7 +172,7 @@ type Reader struct {
 // NewReader wraps an incoming reader.
 func NewReader(rd io.Reader) *Reader {
 	return &Reader{
-		rd:   rd,
+		rd:   bufio.NewReader(rd),
 		once: sync.Once{},
 		Enc:  Unknown,
 	}
@@ -189,39 +190,28 @@ func (r *Reader) Read(buf []byte) (int, error) {
 		return 0, nil
 	}
 
-	var (
-		bytesRead int
-		readErr   error
-	)
+	var bomErr error
 
 	r.once.Do(func() {
-		if len(buf) < maxBOMLen {
-			readErr = errors.Join(ErrInitBufferReadError, io.ErrShortBuffer)
-
-			return
-		}
-
-		tmpbuf := make([]byte, len(buf))
-
-		//nolint:varnamelen
-		n, err := r.rd.Read(tmpbuf)
+		bytes, err := r.rd.Peek(maxBOMLen)
 		if err != nil {
-			readErr = errors.Join(ErrInitBufferReadError, err)
+			bomErr = errors.Join(ErrInitBufferReadError, err)
 
 			return
 		}
 
-		tmpbuf, enc := Trim(tmpbuf)
-		bytesRead = n - enc.Len()
-		r.Enc = enc
-
-		copy(buf, tmpbuf[:bytesRead])
+		r.Enc = DetectEncoding(bytes)
+		if r.Enc != Unknown {
+			_, err = r.rd.Discard(r.Enc.Len())
+			if err != nil {
+				bomErr = errors.Join(ErrInitBufferReadError, err)
+			}
+		}
 	})
 
-	if bytesRead > 0 || readErr != nil {
-		return bytesRead, readErr
+	if bomErr != nil {
+		return 0, bomErr
 	}
 
-	//nolint:wrapcheck
 	return r.rd.Read(buf)
 }

@@ -5,9 +5,12 @@ import (
 	"encoding/csv"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"strings"
 	"testing"
+	"testing/iotest"
 
+	"github.com/nalgeon/be"
 	"github.com/slash3b/utfbom"
 )
 
@@ -81,10 +84,7 @@ func TestDetectBom(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			enc := utfbom.DetectEncoding(tc.input)
-			if enc != tc.expected {
-				t.Errorf("unexpected encoding %s, expected is %s\n", enc, tc.expected)
-			}
+			be.Equal(t, utfbom.DetectEncoding(tc.input), tc.expected)
 		})
 	}
 }
@@ -100,18 +100,31 @@ func ExampleDetectEncoding() {
 	fmt.Printf("is UTF16:%v\n", enc.AnyOf(utfbom.UTF16BigEndian, utfbom.UTF16LittleEndian))
 	fmt.Printf("is UTF8:%v\n", enc.AnyOf(utfbom.UTF8))
 
-	output, _ := utfbom.Trim(input)
-	fmt.Printf("output string: %q\n", output)
-	fmt.Printf("output bytes:%#x\n", output)
-
 	// output:
 	// input string: "\ufeffhey"
 	// input bytes: 0xefbbbf686579
 	// detected encoding: UTF8
 	// is UTF16:false
 	// is UTF8:true
-	// output string: "hey"
-	// output bytes:0x686579
+}
+
+func ExampleTrim() {
+	input := "\ufeffhello"
+	fmt.Printf("input string: %q\n", input)
+	fmt.Printf("input bytes: %#x\n", input)
+
+	output, enc := utfbom.Trim(input)
+
+	fmt.Printf("detected encoding: %s\n", enc)
+	fmt.Printf("output string: %q\n", output)
+	fmt.Printf("output bytes:%#x\n", output)
+
+	// output:
+	// input string: "\ufeffhello"
+	// input bytes: 0xefbbbf68656c6c6f
+	// detected encoding: UTF8
+	// output string: "hello"
+	// output bytes:0x68656c6c6f
 }
 
 func ExampleReader() {
@@ -156,16 +169,11 @@ func TestEncoding_String(t *testing.T) {
 	t.Parallel()
 
 	for e := utfbom.Unknown; e <= utfbom.UTF32LittleEndian; e++ {
-		s := e.String()
-		if s == "" {
-			t.Errorf("no string for %#v", e)
-		}
+		be.True(t, e.String() != "")
 	}
 
 	s := utfbom.Encoding(999).String()
-	if s != "Unknown" {
-		t.Errorf("wrong string '%s' for invalid encoding", s)
-	}
+	be.True(t, s == "Unknown")
 }
 
 func TestEncoding_Len(t *testing.T) {
@@ -206,15 +214,11 @@ func TestEncoding_Len(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		t.Run(tc.enc.String(), func(t *testing.T) {
-			if got := tc.enc.Len(); got != tc.expected {
-				t.Errorf("got %d, want %d", got, tc.expected)
-			}
-		})
+		be.Equal(t, tc.enc.Len(), tc.expected)
 	}
 }
 
-func TestEncoding_TrimSuccess(t *testing.T) {
+func TestEncoding_Trim(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
@@ -226,54 +230,86 @@ func TestEncoding_TrimSuccess(t *testing.T) {
 		{"empty", nil, utfbom.Unknown, nil},
 		{"no_bom", []byte("hello"), utfbom.Unknown, []byte("hello")},
 		{"only_utf8_bom", []byte("\ufeff"), utfbom.UTF8, []byte{}},
-		{"utf8_bom_with_string", []byte("\xEF\xBB\xBFhello"), utfbom.UTF8, []byte("hello")},
-		//{"5", []byte("\xFE\xFF"), nil, utfbom.UTF16BigEndian, []byte{}},
-		//{"6", []byte("\xFF\xFE"), nil, utfbom.UTF16LittleEndian, []byte{}},
-		//{"7", []byte("\x00\x00\xFE\xFF"), nil, utfbom.UTF32BigEndian, []byte{}},
-		//{"8", []byte("\xFF\xFE\x00\x00"), nil, utfbom.UTF32LittleEndian, []byte{}},
-		//{
-		//	"5", []byte("\xFE\xFF\x00\x68\x00\x65\x00\x6C\x00\x6C\x00\x6F"), nil,
-		//	utfbom.UTF16BigEndian,
-		//	[]byte{0x00, 0x68, 0x00, 0x65, 0x00, 0x6C, 0x00, 0x6C, 0x00, 0x6F},
-		//},
-		//{
-		//	"6", []byte("\xFF\xFE\x68\x00\x65\x00\x6C\x00\x6C\x00\x6F\x00"), nil,
-		//	utfbom.UTF16LittleEndian,
-		//	[]byte{0x68, 0x00, 0x65, 0x00, 0x6C, 0x00, 0x6C, 0x00, 0x6F, 0x00},
-		//},
-		//{
-		//	"7", []byte("\x00\x00\xFE\xFF\x00\x00\x00\x68\x00\x00\x00\x65\x00\x00\x00\x6C\x00\x00\x00\x6C\x00\x00\x00\x6F"), nil,
-		//	utfbom.UTF32BigEndian,
-		//	[]byte{0x00, 0x00, 0x00, 0x68, 0x00, 0x00, 0x00, 0x65, 0x00, 0x00, 0x00, 0x6C, 0x00, 0x00, 0x00, 0x6C, 0x00, 0x00, 0x00, 0x6F},
-		//},
-		//{
-		//	"8", []byte("\xFF\xFE\x00\x00\x68\x00\x00\x00\x65\x00\x00\x00\x6C\x00\x00\x00\x6C\x00\x00\x00\x6F\x00\x00\x00"), nil,
-		//	utfbom.UTF32LittleEndian,
-		//	[]byte{0x68, 0x00, 0x00, 0x00, 0x65, 0x00, 0x00, 0x00, 0x6C, 0x00, 0x00, 0x00, 0x6C, 0x00, 0x00, 0x00, 0x6F, 0x00, 0x00, 0x00},
-		//},
-		//{"9", []byte("\xEF"), nil, utfbom.Unknown, []byte("\xEF")},
-		//{"10", []byte("\xEF\xBB"), nil, utfbom.Unknown, []byte("\xEF\xBB")},
-		//{"11", []byte("\xEF\xBB\xBF"), io.ErrClosedPipe, utfbom.UTF8, []byte{}},
-		//{"12", []byte("\xFE\xFF"), io.ErrClosedPipe, utfbom.Unknown, []byte("\xFE\xFF")},
-		//{"13", []byte("\xFE"), io.ErrClosedPipe, utfbom.Unknown, []byte("\xFE")},
-		//{"14", []byte("\xFF\xFE"), io.ErrClosedPipe, utfbom.Unknown, []byte("\xFF\xFE")},
-		//{"15", []byte("\x00\x00\xFE\xFF"), io.ErrClosedPipe, utfbom.UTF32BigEndian, []byte{}},
-		//{"16", []byte("\x00\x00\xFE"), io.ErrClosedPipe, utfbom.Unknown, []byte{0x00, 0x00, 0xFE}},
-		//{"17", []byte("\x00\x00"), io.ErrClosedPipe, utfbom.Unknown, []byte{0x00, 0x00}},
-		//{"18", []byte("\x00"), io.ErrClosedPipe, utfbom.Unknown, []byte{0x00}},
-		//{"19", []byte("\xFF\xFE\x00\x00"), io.ErrClosedPipe, utfbom.UTF32LittleEndian, []byte{}},
-		//{"20", []byte("\xFF\xFE\x00"), io.ErrClosedPipe, utfbom.Unknown, []byte{0xFF, 0xFE, 0x00}},
-		//{"21", []byte("\xFF\xFE"), io.ErrClosedPipe, utfbom.Unknown, []byte{0xFF, 0xFE}},
-		//{"22", []byte("\xFF"), io.ErrClosedPipe, utfbom.Unknown, []byte{0xFF}},
-		//{"23", []byte("\x68\x65"), nil, utfbom.Unknown, []byte{0x68, 0x65}},
+		{"utf8_bom_with_string", []byte("\ufeffhello"), utfbom.UTF8, []byte("hello")},
+		{"incomplete_payload_left_intact", []byte{0xef}, utfbom.Unknown, []byte{0xef}},
+		{"utf16_be_empty", []byte{0xfe, 0xff}, utfbom.UTF16BigEndian, []byte{}},
+		{"utf16_be", []byte{0xfe, 0xff, 0x00, 0x68, 0x00, 0x65}, utfbom.UTF16BigEndian, []byte{0x00, 0x68, 0x00, 0x65}},
+		{"utf16_le_empty", []byte{0xff, 0xfe}, utfbom.UTF16LittleEndian, []byte{}},
+		{"utf16_le", []byte{0xff, 0xfe, 0x68, 0x00, 0x65}, utfbom.UTF16LittleEndian, []byte{0x68, 0x00, 0x65}},
+		{"utf32_be_empty", []byte{0x00, 0x00, 0xfe, 0xff}, utfbom.UTF32BigEndian, []byte{}},
+		{"utf32_be", []byte{0x00, 0x00, 0xfe, 0xff, 0x00, 0x00, 0x00, 0x68}, utfbom.UTF32BigEndian, []byte{0x00, 0x00, 0x00, 0x68}},
+		{"utf32_le_empty", []byte{0xff, 0xfe, 0x00, 0x00}, utfbom.UTF32LittleEndian, []byte{}},
+		{"utf32_le", []byte{0xff, 0xfe, 0x00, 0x00, 0x68, 0x00, 0x65}, utfbom.UTF32LittleEndian, []byte{0x68, 0x00, 0x65}},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			out, _ := utfbom.Trim(tc.input)
-			if !bytes.Equal(out, tc.output) {
-				t.Errorf("got %q, want %q", out, tc.output)
-			}
+			out, enc := utfbom.Trim(tc.input)
+
+			be.Equal(t, enc, tc.encoding)
+			be.Equal(t, out, tc.output)
 		})
 	}
+}
+
+var teststring = "\ufeff" + `Lorem ipsum dolor sit amet consectetur adipiscing elit
+Quisque faucibus ex sapien vitae pellentesque sem placerat.`
+
+func TestReader_OneByteReader(t *testing.T) {
+	t.Parallel()
+
+	bomPrefixedStringReader := strings.NewReader(teststring)
+
+	rd := iotest.OneByteReader(utfbom.NewReader(bomPrefixedStringReader))
+
+	buf := make([]byte, 100)
+
+	expected := teststring[3:]
+
+	for _, v := range expected {
+		n, err := rd.Read(buf)
+		be.Err(t, err, nil)
+
+		char := string(v)
+		be.Equal(t, string(buf[:n]), char)
+	}
+
+	n, err := rd.Read(buf)
+	be.Err(t, err, io.EOF)
+
+	be.Equal(t, n, 0)
+}
+
+func TestReader_EmptyBuffer(t *testing.T) {
+	t.Parallel()
+
+	rd := utfbom.NewReader(nil)
+
+	// in case buf length is 0, io.Reader implementations
+	// should always return 0, nil
+	// see: https://pkg.go.dev/io#Reader
+	for range 10 {
+		n, err := rd.Read(nil)
+		be.Equal(t, 0, n)
+		be.Err(t, err, nil)
+	}
+}
+
+func TestReader_WrappeeReaderIsTooSmall(t *testing.T) {
+	t.Parallel()
+
+	wrappee := strings.NewReader("a")
+	wrapped := utfbom.NewReader(wrappee)
+
+	buf := make([]byte, 100)
+	n, err := wrapped.Read(buf)
+	be.Equal(t, 0, n)
+	be.Err(t, err, io.EOF)
+	be.Err(t, err, utfbom.ErrInitBufferReadError)
+
+	// you might proceed reading if you want
+	n, err = wrapped.Read(buf)
+	be.Err(t, err, nil)
+	be.Equal(t, 1, n)
+	be.Equal(t, string(buf[:n]), "a")
 }
