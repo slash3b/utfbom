@@ -1,4 +1,4 @@
-// Package utfbom provides utilities for handling the Unicode Byte Order Mark (BOM).
+// Package utfbom provides utilities for handling the Unicode Byte Order Mark.
 //
 // It detects the type of BOM present in data,
 // offers functions to strip the BOM from strings or byte slices,
@@ -6,6 +6,8 @@
 package utfbom
 
 import (
+	"bufio"
+	"errors"
 	"io"
 	"sync"
 )
@@ -19,15 +21,35 @@ var (
 	utf32LEBOM           = [4]byte{0xff, 0xfe, 0x00, 0x00}
 )
 
+// ErrInitBufferReadError helps to trace error origin.
+var ErrInitBufferReadError = errors.New("utfbom library unable to detect BOM")
+
 // Encoding is a character encoding standard.
 type Encoding int
 
 const (
+	// Unknown represents an unknown encoding that does not affect the incoming byte stream.
+	// It has no associated Byte Order Mark.
 	Unknown Encoding = iota
+
+	// UTF8 represents UTF-8 encoding.
+	// Its Byte Order Mark (BOM) is 0xef 0xbb 0xbf.
 	UTF8
+
+	// UTF16BigEndian represents UTF-16 encoding with big-endian byte order.
+	// Its Byte Order Mark (BOM) is 0xfe 0xff.
 	UTF16BigEndian
+
+	// UTF16LittleEndian represents UTF-16 encoding with little-endian byte order.
+	// Its Byte Order Mark (BOM) is 0xff 0xfe.
 	UTF16LittleEndian
+
+	// UTF32BigEndian represents UTF-32 encoding with big-endian byte order.
+	// Its Byte Order Mark (BOM) is 0x00 0x00 0xfe 0xff.
 	UTF32BigEndian
+
+	// UTF32LittleEndian represents UTF-32 encoding with little-endian byte order.
+	// Its Byte Order Mark (BOM) is 0xff 0xfe 0x00 0x00.
 	UTF32LittleEndian
 )
 
@@ -41,40 +63,40 @@ const (
 //   - UTF-16 Little Endian (BOM: 0xff 0xfe)
 //   - UTF-32 Big Endian (BOM: 0x00 0x00 0xfe 0xff)
 //   - UTF-32 Little Endian (BOM: 0xff 0xfe 0x00 0x00)
-func DetectEncoding[T string | []byte](b T) Encoding {
-	i := []byte(b)
+func DetectEncoding[T string | []byte](input T) Encoding {
+	bytes := []byte(input)
 
-	if len(i) < 2 {
+	if len(bytes) < 2 {
 		return Unknown
 	}
 
-	if len(i) >= 4 {
-		if utf32BEBOM[0] == i[0] &&
-			utf32BEBOM[1] == i[1] &&
-			utf32BEBOM[2] == i[2] &&
-			utf32BEBOM[3] == i[3] {
+	if len(bytes) >= 4 {
+		if utf32BEBOM[0] == bytes[0] &&
+			utf32BEBOM[1] == bytes[1] &&
+			utf32BEBOM[2] == bytes[2] &&
+			utf32BEBOM[3] == bytes[3] {
 			return UTF32BigEndian
 		}
 
-		if utf32LEBOM[0] == i[0] &&
-			utf32LEBOM[1] == i[1] &&
-			utf32LEBOM[2] == i[2] &&
-			utf32LEBOM[3] == i[3] {
+		if utf32LEBOM[0] == bytes[0] &&
+			utf32LEBOM[1] == bytes[1] &&
+			utf32LEBOM[2] == bytes[2] &&
+			utf32LEBOM[3] == bytes[3] {
 			return UTF32LittleEndian
 		}
 	}
 
-	if len(i) >= 3 {
-		if utf8BOM[0] == i[0] && utf8BOM[1] == i[1] && utf8BOM[2] == i[2] {
+	if len(bytes) >= 3 {
+		if utf8BOM[0] == bytes[0] && utf8BOM[1] == bytes[1] && utf8BOM[2] == bytes[2] {
 			return UTF8
 		}
 	}
 
-	if utf16BEBOM[0] == i[0] && utf16BEBOM[1] == i[1] {
+	if utf16BEBOM[0] == bytes[0] && utf16BEBOM[1] == bytes[1] {
 		return UTF16BigEndian
 	}
 
-	if utf16LEBOM[0] == i[0] && utf16LEBOM[1] == i[1] {
+	if utf16LEBOM[0] == bytes[0] && utf16LEBOM[1] == bytes[1] {
 		return UTF16LittleEndian
 	}
 
@@ -127,34 +149,33 @@ func (e Encoding) Len() int {
 
 // Trim removes the BOM prefix from the input `s` based on the encoding `enc`.
 // Supports string or []byte inputs and returns the same type without the BOM.
-func Trim[T string | []byte](s T, enc Encoding) T {
-	b := []byte(s)
+func Trim[T string | []byte](input T) (T, Encoding) {
+	bytes := []byte(input)
+	enc := DetectEncoding(bytes)
 
-	switch enc {
-	case UTF8:
-		b = b[3:]
-	case UTF16BigEndian, UTF16LittleEndian:
-		b = b[2:]
-	case UTF32BigEndian, UTF32LittleEndian:
-		b = b[4:]
+	if enc == Unknown {
+		return input, enc
 	}
 
-	return T(b)
-}
-
-func NewReader(rd io.Reader) *Reader {
-	return &Reader{
-		rd: rd,
-	}
+	return T(bytes[enc.Len():]), enc
 }
 
 // Reader implements automatic BOM (Unicode Byte Order Mark) checking and
 // removing as necessary for an io.Reader object.
 type Reader struct {
-	rd   io.Reader
+	rd   *bufio.Reader
 	once sync.Once
 	// Enc will be available after first read
 	Enc Encoding
+}
+
+// NewReader wraps an incoming reader.
+func NewReader(rd io.Reader) *Reader {
+	return &Reader{
+		rd:   bufio.NewReader(rd),
+		once: sync.Once{},
+		Enc:  Unknown,
+	}
 }
 
 // Read implements the io.Reader interface.
@@ -162,41 +183,35 @@ type Reader struct {
 // Subsequent calls delegate directly to the underlying Reader without BOM handling.
 // Read is only safe for concurrent use during the first call due to sync.Once; after that, thread-safety
 // depends on the underlying Reader. It is best to assume unsafe concurrent use.
-func (r *Reader) Read(p []byte) (int, error) {
+func (r *Reader) Read(buf []byte) (int, error) {
 	const maxBOMLen = 4
 
-	if len(p) == 0 {
+	if len(buf) == 0 {
 		return 0, nil
 	}
 
-	var (
-		n   int
-		err error
-	)
+	var bomErr error
 
 	r.once.Do(func() {
-		if len(p) < maxBOMLen {
-			err = io.ErrShortBuffer
-			return
-		}
-
-		s := make([]byte, len(p))
-		n, err = r.rd.Read(s)
+		bytes, err := r.rd.Peek(maxBOMLen)
 		if err != nil {
+			bomErr = errors.Join(ErrInitBufferReadError, err)
+
 			return
 		}
-		r.Enc = DetectEncoding(s)
-		s = Trim(s, r.Enc)
-		n = n - r.Enc.Len()
 
-		copy(p, s[:n])
+		r.Enc = DetectEncoding(bytes)
+		if r.Enc != Unknown {
+			_, err = r.rd.Discard(r.Enc.Len())
+			if err != nil {
+				bomErr = errors.Join(ErrInitBufferReadError, err)
+			}
+		}
 	})
 
-	if n > 0 || err != nil {
-		return n, err
+	if bomErr != nil {
+		return 0, bomErr
 	}
 
-	n, err = r.rd.Read(p)
-
-	return n, err
+	return r.rd.Read(buf)
 }

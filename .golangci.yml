@@ -1,0 +1,20 @@
+---
+# https://golangci-lint.run/usage/configuration/
+
+version: "2"
+linters:
+  default: all
+  disable:
+    - gochecknoglobals
+    - cyclop
+    - mnd
+    - exhaustive
+    - ireturn
+    - wrapcheck
+  settings:
+    lll:
+      line-length: 160
+
+run:
+  tests: false
+  timeout: 10m

@@ -11,34 +11,56 @@ Package `utfbom` is able to detect and remove the Unicode Byte Order Mark (BOM) 
 ```
 
 ## What is `\uFEFF`?
+`\uFEFF` is the Unicode Byte Order Mark (BOM), it indicates text encoding and byte order.  
+Go source code is defined to be UTF-8 text, so **all string literals in Go source files are by default UTF-8 encoded sequences**, making Go a UTF-8 compliant language at its core.   
+Note, BOM is a zero width character.
 
-- `\uFEFF` is the Unicode Byte Order Mark (BOM)
-- Indicates text encoding and byte order
-- UTF-8 BOM bytes: `0xEF 0xBB 0xBF` (3 bytes).
+This library supports detection and trimming of the following BOM prefixes:
 
-[go.dev/play](https://go.dev/play/p/8BA81aUDnWW)
+| Encoding         | BOM Hex Values               |
+|:-----------------|:-----------------------------|
+| UTF-8            | 0xef 0xbb 0xbf               |
+| UTF-16 (BE)      | 0xfe 0xff                    |
+| UTF-16 (LE)      | 0xff 0xfe                    |
+| UTF-32 (BE)      | 0x00 0x00 0xfe 0xff          |
+| UTF-32 (LE)      | 0xff 0xfe 0x00 0x00          |
+
+[go.dev/play](https://go.dev/play/p/-VVI1k8UEnI)
+
 ```golang
     package main
 
     import (
+        "bytes"
         "encoding/hex"
         "fmt"
     )
 
     func main() {
-        s := "\ufefehey"
+        a := "\ufefehey"
+        b := "hey"
 
-        fmt.Println(hex.Dump([]byte(s)))
+        fmt.Println(a == b)
+        fmt.Println(bytes.Equal([]byte(a), []byte(b)))
+
+        fmt.Print(hex.Dump([]byte(a)))
+        fmt.Print(hex.Dump([]byte(b)))
     }
 
     // Output:
-    // 00000000  ef bb bf 68 65 79                                 |...hey|
+    // false
+    // false
+    // 00000000  ef bb be 68 65 79                                 |...hey|
+    // 00000000  68 65 79                                          |hey|
 ```
+
+Links:
+- https://en.wikipedia.org/wiki/Byte_order_mark
 
 ## Examples
 
 ### Encoding detection
-[go.dev/play](https://go.dev/play/p/G3NZjB04iRn)
+[go.dev/play](https://go.dev/play/p/yjj__F_fcEE)
 ```golang
     package main
 
@@ -58,10 +80,6 @@ Package `utfbom` is able to detect and remove the Unicode Byte Order Mark (BOM) 
 
         fmt.Printf("is UTF16:%v\n", enc.AnyOf(utfbom.UTF16BigEndian, utfbom.UTF16LittleEndian))
         fmt.Printf("is UTF8:%v\n", enc.AnyOf(utfbom.UTF8))
-
-        output := utfbom.Trim(input, enc)
-        fmt.Printf("output string: %q\n", output)
-        fmt.Printf("output bytes:%#x\n", output)
     }
 
     // Output: 
@@ -70,6 +88,34 @@ Package `utfbom` is able to detect and remove the Unicode Byte Order Mark (BOM) 
     // detected encoding: UTF8
     // is UTF16:false
     // is UTF8:true
+```
+
+### BOM trimming
+[go.dev/play](https://go.dev/play/p/lAp1A-42qJN)
+```golang
+    package main
+
+    import (
+        "fmt"
+
+        "github.com/slash3b/utfbom"
+    )
+
+    func main() {
+        input := "\ufeffhey"
+        fmt.Printf("input string: %q\n", input)
+        fmt.Printf("input bytes: %#x\n", input)
+
+		output, enc := utfbom.Trim(input)
+		fmt.Printf("detected encoding: %s\n", enc)
+		fmt.Printf("output string: %q\n", output)
+		fmt.Printf("output bytes:%#x\n", output)
+	}
+
+    // Output: 
+    // input string: "\ufeffhey"
+    // input bytes: 0xefbbbf686579
+    // detected encoding: UTF8
     // output string: "hey"
     // output bytes:0x686579
 ```
