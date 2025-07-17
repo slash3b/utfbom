@@ -1,4 +1,4 @@
-.PHONY:all test test-coverage install-tools fmt vet
+.PHONY:all test test-coverage install-tools fmt vet lint
 
 all: fmt test
 
@@ -12,6 +12,7 @@ test-coverage:
 install-tools:
 	go install mvdan.cc/gofumpt@v0.8.0
 	go install github.com/daixiang0/gci@v0.13.6
+	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.2.2
 
 fmt:
 	@gofumpt -w -extra .
@@ -26,3 +27,8 @@ fmt:
 vet:
 	go vet ./...
 
+lint:
+	@golangci-lint run \
+		-c .golangci.yml \
+		-v \
+		./...
