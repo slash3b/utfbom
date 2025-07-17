@@ -213,6 +213,7 @@ func (r *Reader) Read(buf []byte) (int, error) {
 
 		tmpbuf, enc := Trim(tmpbuf)
 		bytesRead = n - enc.Len()
+		r.Enc = enc
 
 		copy(buf, tmpbuf[:bytesRead])
 	})

@@ -100,7 +100,7 @@ func ExampleDetectEncoding() {
 	fmt.Printf("is UTF16:%v\n", enc.AnyOf(utfbom.UTF16BigEndian, utfbom.UTF16LittleEndian))
 	fmt.Printf("is UTF8:%v\n", enc.AnyOf(utfbom.UTF8))
 
-	output := utfbom.Trim(input, enc)
+	output, _ := utfbom.Trim(input)
 	fmt.Printf("output string: %q\n", output)
 	fmt.Printf("output bytes:%#x\n", output)
 
@@ -270,7 +270,7 @@ func TestEncoding_TrimSuccess(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			out := utfbom.Trim(tc.input, tc.encoding)
+			out, _ := utfbom.Trim(tc.input)
 			if !bytes.Equal(out, tc.output) {
 				t.Errorf("got %q, want %q", out, tc.output)
 			}
