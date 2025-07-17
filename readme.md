@@ -60,7 +60,7 @@ Links:
 ## Examples
 
 ### Encoding detection
-[go.dev/play](https://go.dev/play/p/G3NZjB04iRn)
+[go.dev/play](https://go.dev/play/p/yjj__F_fcEE)
 ```golang
     package main
 
@@ -80,10 +80,6 @@ Links:
 
         fmt.Printf("is UTF16:%v\n", enc.AnyOf(utfbom.UTF16BigEndian, utfbom.UTF16LittleEndian))
         fmt.Printf("is UTF8:%v\n", enc.AnyOf(utfbom.UTF8))
-
-        output := utfbom.Trim(input)
-        fmt.Printf("output string: %q\n", output)
-        fmt.Printf("output bytes:%#x\n", output)
     }
 
     // Output: 
@@ -92,6 +88,34 @@ Links:
     // detected encoding: UTF8
     // is UTF16:false
     // is UTF8:true
+```
+
+### BOM trimming
+[go.dev/play](https://go.dev/play/p/lAp1A-42qJN)
+```golang
+    package main
+
+    import (
+        "fmt"
+
+        "github.com/slash3b/utfbom"
+    )
+
+    func main() {
+        input := "\ufeffhey"
+        fmt.Printf("input string: %q\n", input)
+        fmt.Printf("input bytes: %#x\n", input)
+
+		output, enc := utfbom.Trim(input)
+		fmt.Printf("detected encoding: %s\n", enc)
+		fmt.Printf("output string: %q\n", output)
+		fmt.Printf("output bytes:%#x\n", output)
+	}
+
+    // Output: 
+    // input string: "\ufeffhey"
+    // input bytes: 0xefbbbf686579
+    // detected encoding: UTF8
     // output string: "hey"
     // output bytes:0x686579
 ```
