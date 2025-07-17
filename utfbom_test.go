@@ -255,6 +255,16 @@ func TestEncoding_Trim(t *testing.T) {
 var teststring = "\ufeff" + `Lorem ipsum dolor sit amet consectetur adipiscing elit
 Quisque faucibus ex sapien vitae pellentesque sem placerat.`
 
+func TestReader_UsualReader(t *testing.T) {
+	t.Parallel()
+
+	bomPrefixedStringReader := strings.NewReader(teststring)
+
+	rd := utfbom.NewReader(bomPrefixedStringReader)
+
+	be.Err(t, iotest.TestReader(rd, []byte(teststring[3:])), nil)
+}
+
 func TestReader_OneByteReader(t *testing.T) {
 	t.Parallel()
 
@@ -262,22 +272,7 @@ func TestReader_OneByteReader(t *testing.T) {
 
 	rd := iotest.OneByteReader(utfbom.NewReader(bomPrefixedStringReader))
 
-	buf := make([]byte, 100)
-
-	expected := teststring[3:]
-
-	for _, v := range expected {
-		n, err := rd.Read(buf)
-		be.Err(t, err, nil)
-
-		char := string(v)
-		be.Equal(t, string(buf[:n]), char)
-	}
-
-	n, err := rd.Read(buf)
-	be.Err(t, err, io.EOF)
-
-	be.Equal(t, n, 0)
+	be.Err(t, iotest.TestReader(rd, []byte(teststring[3:])), nil)
 }
 
 func TestReader_EmptyBuffer(t *testing.T) {
