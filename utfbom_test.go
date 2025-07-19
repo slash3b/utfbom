@@ -255,6 +255,26 @@ func TestEncoding_Trim(t *testing.T) {
 var teststring = "\ufeff" + `Lorem ipsum dolor sit amet consectetur adipiscing elit
 Quisque faucibus ex sapien vitae pellentesque sem placerat.`
 
+func TestReader_BOM_DeleteSuccess(t *testing.T) {
+	t.Parallel()
+
+	bomPrefixedStringReader := strings.NewReader(teststring)
+
+	rd := utfbom.NewReader(bomPrefixedStringReader)
+
+	be.Err(t, iotest.TestReader(rd, []byte(teststring[3:])), nil)
+}
+
+func TestReader_StringWithoutBOM(t *testing.T) {
+	t.Parallel()
+
+	nobomstring, _ := utfbom.Trim(teststring)
+
+	rd := utfbom.NewReader(strings.NewReader(nobomstring))
+
+	be.Err(t, iotest.TestReader(rd, []byte(nobomstring)), nil)
+}
+
 func TestReader_UsualReader(t *testing.T) {
 	t.Parallel()
 
