@@ -23,7 +23,7 @@ var (
 )
 
 // ErrRead helps to trace error origin.
-var ErrRead = errors.New("utfbom library unable to detect BOM")
+var ErrRead = errors.New("utfbom: I/O error during BOM processing")
 
 // Encoding is a character encoding standard.
 type Encoding int
