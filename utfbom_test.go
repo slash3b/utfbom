@@ -320,7 +320,7 @@ func TestReader_WrappeeReaderIsTooSmall(t *testing.T) {
 	n, err := wrapped.Read(buf)
 	be.Equal(t, 0, n)
 	be.Err(t, err, io.EOF)
-	be.Err(t, err, utfbom.ErrInitBufferReadError)
+	be.Err(t, err, utfbom.ErrRead)
 
 	// you might proceed reading if you want
 	n, err = wrapped.Read(buf)

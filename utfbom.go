@@ -21,8 +21,8 @@ var (
 	utf32LEBOM           = [4]byte{0xff, 0xfe, 0x00, 0x00}
 )
 
-// ErrInitBufferReadError helps to trace error origin.
-var ErrInitBufferReadError = errors.New("utfbom library unable to detect BOM")
+// ErrRead helps to trace error origin.
+var ErrRead = errors.New("utfbom library unable to detect BOM")
 
 // Encoding is a character encoding standard.
 type Encoding int
@@ -195,7 +195,7 @@ func (r *Reader) Read(buf []byte) (int, error) {
 	r.once.Do(func() {
 		bytes, err := r.rd.Peek(maxBOMLen)
 		if err != nil {
-			bomErr = errors.Join(ErrInitBufferReadError, err)
+			bomErr = errors.Join(ErrRead, err)
 
 			return
 		}
@@ -204,7 +204,7 @@ func (r *Reader) Read(buf []byte) (int, error) {
 		if r.Enc != Unknown {
 			_, err = r.rd.Discard(r.Enc.Len())
 			if err != nil {
-				bomErr = errors.Join(ErrInitBufferReadError, err)
+				bomErr = errors.Join(ErrRead, err)
 			}
 		}
 	})
