@@ -7,6 +7,7 @@ package utfbom
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"io"
 	"sync"
@@ -14,15 +15,15 @@ import (
 
 var (
 	_          io.Reader = (*Reader)(nil)
-	utf8BOM              = [3]byte{0xef, 0xbb, 0xbf}
-	utf16BEBOM           = [2]byte{0xfe, 0xff}
-	utf16LEBOM           = [2]byte{0xff, 0xfe}
-	utf32BEBOM           = [4]byte{0x00, 0x00, 0xfe, 0xff}
-	utf32LEBOM           = [4]byte{0xff, 0xfe, 0x00, 0x00}
+	utf8BOM              = []byte{0xef, 0xbb, 0xbf}
+	utf16BEBOM           = []byte{0xfe, 0xff}
+	utf16LEBOM           = []byte{0xff, 0xfe}
+	utf32BEBOM           = []byte{0x00, 0x00, 0xfe, 0xff}
+	utf32LEBOM           = []byte{0xff, 0xfe, 0x00, 0x00}
 )
 
 // ErrRead helps to trace error origin.
-var ErrRead = errors.New("utfbom library unable to detect BOM")
+var ErrRead = errors.New("utfbom: I/O error during BOM processing")
 
 // Encoding is a character encoding standard.
 type Encoding int
@@ -64,39 +65,31 @@ const (
 //   - UTF-32 Big Endian (BOM: 0x00 0x00 0xfe 0xff)
 //   - UTF-32 Little Endian (BOM: 0xff 0xfe 0x00 0x00)
 func DetectEncoding[T string | []byte](input T) Encoding {
-	bytes := []byte(input)
+	ibs := []byte(input)
 
-	if len(bytes) < 2 {
+	if len(ibs) < 2 {
 		return Unknown
 	}
 
-	if len(bytes) >= 4 {
-		if utf32BEBOM[0] == bytes[0] &&
-			utf32BEBOM[1] == bytes[1] &&
-			utf32BEBOM[2] == bytes[2] &&
-			utf32BEBOM[3] == bytes[3] {
+	if len(ibs) >= 4 {
+		if bytes.HasPrefix(ibs, utf32BEBOM) {
 			return UTF32BigEndian
 		}
 
-		if utf32LEBOM[0] == bytes[0] &&
-			utf32LEBOM[1] == bytes[1] &&
-			utf32LEBOM[2] == bytes[2] &&
-			utf32LEBOM[3] == bytes[3] {
+		if bytes.HasPrefix(ibs, utf32LEBOM) {
 			return UTF32LittleEndian
 		}
 	}
 
-	if len(bytes) >= 3 {
-		if utf8BOM[0] == bytes[0] && utf8BOM[1] == bytes[1] && utf8BOM[2] == bytes[2] {
-			return UTF8
-		}
+	if len(ibs) >= 3 && bytes.HasPrefix(ibs, utf8BOM) {
+		return UTF8
 	}
 
-	if utf16BEBOM[0] == bytes[0] && utf16BEBOM[1] == bytes[1] {
+	if bytes.HasPrefix(ibs, utf16BEBOM) {
 		return UTF16BigEndian
 	}
 
-	if utf16LEBOM[0] == bytes[0] && utf16LEBOM[1] == bytes[1] {
+	if bytes.HasPrefix(ibs, utf16LEBOM) {
 		return UTF16LittleEndian
 	}
 
@@ -194,7 +187,9 @@ func (r *Reader) Read(buf []byte) (int, error) {
 
 	r.once.Do(func() {
 		bytes, err := r.rd.Peek(maxBOMLen)
-		if err != nil {
+		// do not error out in case underlying payload is too small
+		// still attempt to read fewer than n bytes.
+		if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
 			bomErr = errors.Join(ErrRead, err)
 
 			return
