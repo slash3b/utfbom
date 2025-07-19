@@ -187,7 +187,9 @@ func (r *Reader) Read(buf []byte) (int, error) {
 
 	r.once.Do(func() {
 		bytes, err := r.rd.Peek(maxBOMLen)
-		if err != nil {
+		// do not error out in case underlying payload is too small
+		// still attempt to read fewer than n bytes.
+		if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
 			bomErr = errors.Join(ErrRead, err)
 
 			return

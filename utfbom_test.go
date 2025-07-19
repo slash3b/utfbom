@@ -310,21 +310,44 @@ func TestReader_EmptyBuffer(t *testing.T) {
 	}
 }
 
-func TestReader_WrappeeReaderIsTooSmall(t *testing.T) {
+// TestReader_WrappeeReaderHasTinyPayload tests that bufio.Reader is able to
+// read on the first Read without failing.
+func TestReader_WrappeeReaderHasTinyPayload_EnoughBuffer(t *testing.T) {
 	t.Parallel()
 
-	wrappee := strings.NewReader("a")
+	wrappee := bytes.NewReader([]byte{0xff, 0xfe, 0x01, 0x02, 0x03})
 	wrapped := utfbom.NewReader(wrappee)
 
 	buf := make([]byte, 100)
 	n, err := wrapped.Read(buf)
-	be.Equal(t, 0, n)
-	be.Err(t, err, io.EOF)
-	be.Err(t, err, utfbom.ErrRead)
-
-	// you might proceed reading if you want
-	n, err = wrapped.Read(buf)
+	be.Equal(t, 3, n)
+	t.Logf("have read %q", string(buf[:n]))
+	t.Logf("detected enc: %s", wrapped.Enc)
+	t.Logf("err: %v", err)
+	be.Equal(t, buf[:n], []byte{0x01, 0x02, 0x03})
 	be.Err(t, err, nil)
-	be.Equal(t, 1, n)
-	be.Equal(t, string(buf[:n]), "a")
+
+	n, err = wrapped.Read(buf)
+	t.Logf("second read returns err: %v", err)
+	be.Err(t, err, io.EOF)
+	be.Equal(t, 0, n)
+}
+
+func TestReader_WrappeeReaderHasTinyPayload_OneByteBuffer(t *testing.T) {
+	t.Parallel()
+
+	wrappee := bytes.NewReader([]byte{0xff, 0xfe, 0x01, 0x02, 0x03})
+	rd := iotest.OneByteReader(utfbom.NewReader(wrappee))
+
+	buf := make([]byte, 1)
+	for i := range 3 {
+		n, err := rd.Read(buf)
+		be.Err(t, err, nil)
+		be.Equal(t, 1, n)
+		be.Equal(t, []byte{0x01 + byte(i)}, buf[:n])
+	}
+
+	n, err := rd.Read(buf)
+	be.Err(t, err, io.EOF)
+	be.Equal(t, 0, n)
 }
