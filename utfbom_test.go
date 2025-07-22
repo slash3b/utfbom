@@ -14,6 +14,14 @@ import (
 	"github.com/slash3b/utfbom"
 )
 
+var (
+	utf8BOM    = []byte{0xef, 0xbb, 0xbf}
+	utf16BEBOM = []byte{0xfe, 0xff}
+	utf16LEBOM = []byte{0xff, 0xfe}
+	utf32BEBOM = []byte{0x00, 0x00, 0xfe, 0xff}
+	utf32LEBOM = []byte{0xff, 0xfe, 0x00, 0x00}
+)
+
 func TestDetectBom(t *testing.T) {
 	testCases := []struct {
 		name     string
@@ -125,6 +133,36 @@ func ExampleTrim() {
 	// detected encoding: UTF8
 	// output string: "hello"
 	// output bytes:0x68656c6c6f
+}
+
+func ExamplePrepend() {
+	// Prepend a UTF-8 BOM to a simple string.
+	// The UTF-8 BOM is represented by the rune \ufeff.
+	withBOM := utfbom.Prepend("hello", utfbom.UTF8)
+	fmt.Printf("String with UTF-8 BOM: %q\n", withBOM)
+	fmt.Printf("Bytes: %#x\n\n", withBOM)
+
+	// Prepend a UTF-16LE BOM to a byte slice that is also UTF-16LE encoded.
+	// This represents the word "world" in UTF-16 Little Endian.
+	data := []byte{0x77, 0x00, 0x6f, 0x00, 0x72, 0x00, 0x6c, 0x00, 0x64, 0x00}
+	withBOMBytes := utfbom.Prepend(data, utfbom.UTF16LittleEndian)
+	fmt.Printf("Bytes with UTF-16LE BOM: %#x\n\n", withBOMBytes)
+
+	// The Prepend function is idempotent.
+	// If a BOM already exists, it will not add another one.
+	alreadyHasBOM := "\ufeffhello"
+	idempotentResult := utfbom.Prepend(alreadyHasBOM, utfbom.UTF8)
+	fmt.Printf("Idempotent result: %q\n", idempotentResult)
+	fmt.Printf("Bytes are unchanged: %#x\n", idempotentResult)
+
+	// output:
+	// String with UTF-8 BOM: "\ufeffhello"
+	// Bytes: 0xefbbbf68656c6c6f
+	//
+	// Bytes with UTF-16LE BOM: 0xfffe77006f0072006c006400
+	//
+	// Idempotent result: "\ufeffhello"
+	// Bytes are unchanged: 0xefbbbf68656c6c6f
 }
 
 func ExampleReader() {
@@ -350,4 +388,102 @@ func TestReader_WrappeeReaderHasTinyPayload_OneByteBuffer(t *testing.T) {
 	n, err := rd.Read(buf)
 	be.Err(t, err, io.EOF)
 	be.Equal(t, 0, n)
+}
+
+func TestEncoding_Bytes(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name     string
+		enc      utfbom.Encoding
+		expected []byte
+	}{
+		{
+			name:     "Unknown",
+			enc:      utfbom.Unknown,
+			expected: nil,
+		},
+		{
+			name:     "UTF8",
+			enc:      utfbom.UTF8,
+			expected: []byte{0xef, 0xbb, 0xbf},
+		},
+		{
+			name:     "UTF16BigEndian",
+			enc:      utfbom.UTF16BigEndian,
+			expected: []byte{0xfe, 0xff},
+		},
+		{
+			name:     "UTF16LittleEndian",
+			enc:      utfbom.UTF16LittleEndian,
+			expected: []byte{0xff, 0xfe},
+		},
+		{
+			name:     "UTF32BigEndian",
+			enc:      utfbom.UTF32BigEndian,
+			expected: []byte{0x00, 0x00, 0xfe, 0xff},
+		},
+		{
+			name:     "UTF32LittleEndian",
+			enc:      utfbom.UTF32LittleEndian,
+			expected: []byte{0xff, 0xfe, 0x00, 0x00},
+		},
+		{
+			name:     "InvalidEncoding",
+			enc:      utfbom.Encoding(999),
+			expected: nil,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.enc.Bytes()
+			be.Equal(t, got, tc.expected)
+		})
+	}
+}
+
+func TestPrepend(t *testing.T) {
+	t.Parallel()
+
+	t.Run("byte_slice", func(t *testing.T) {
+		data := []byte("data")
+
+		testCases := []struct {
+			name     string
+			input    []byte
+			enc      utfbom.Encoding
+			expected []byte
+		}{
+			{"unknown_on_data", data, utfbom.Unknown, data},
+			{"unknown_on_empty", []byte{}, utfbom.Unknown, []byte{}},
+			{"unknown_on_nil", nil, utfbom.Unknown, nil},
+			{"utf8_on_data", data, utfbom.UTF8, append(utf8BOM, data...)},
+			{"utf8_on_empty", []byte{}, utfbom.UTF8, utf8BOM},
+			{"utf8_on_nil", nil, utfbom.UTF8, utf8BOM},
+			{"utf16be_on_data", data, utfbom.UTF16BigEndian, append(utf16BEBOM, data...)},
+			{"utf16be_on_empty", []byte{}, utfbom.UTF16BigEndian, utf16BEBOM},
+			{"utf16be_on_nil", nil, utfbom.UTF16BigEndian, utf16BEBOM},
+			{"utf16le_on_data", data, utfbom.UTF16LittleEndian, append(utf16LEBOM, data...)},
+			{"utf16le_on_empty", []byte{}, utfbom.UTF16LittleEndian, utf16LEBOM},
+			{"utf16le_on_nil", nil, utfbom.UTF16LittleEndian, utf16LEBOM},
+			{"utf32be_on_data", data, utfbom.UTF32BigEndian, append(utf32BEBOM, data...)},
+			{"utf32be_on_empty", []byte{}, utfbom.UTF32BigEndian, utf32BEBOM},
+			{"utf32be_on_nil", nil, utfbom.UTF32BigEndian, utf32BEBOM},
+			{"utf32le_on_data", data, utfbom.UTF32LittleEndian, append(utf32LEBOM, data...)},
+			{"utf32le_on_empty", []byte{}, utfbom.UTF32LittleEndian, utf32LEBOM},
+			{"utf32le_on_nil", nil, utfbom.UTF32LittleEndian, utf32LEBOM},
+			{"idempotent_when_bom_exists", append(utf8BOM, data...), utfbom.UTF8, append(utf8BOM, data...)},
+			{"idempotent_when_different_bom_exists", append(utf32LEBOM, data...), utfbom.UTF16BigEndian, append(utf32LEBOM, data...)},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				got := utfbom.Prepend(tc.input, tc.enc)
+				be.Equal(t, got, tc.expected)
+			})
+		}
+	})
 }

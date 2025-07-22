@@ -71,6 +71,10 @@ func DetectEncoding[T string | []byte](input T) Encoding {
 		return Unknown
 	}
 
+	if len(ibs) >= 3 && bytes.HasPrefix(ibs, utf8BOM) {
+		return UTF8
+	}
+
 	if len(ibs) >= 4 {
 		if bytes.HasPrefix(ibs, utf32BEBOM) {
 			return UTF32BigEndian
@@ -79,10 +83,6 @@ func DetectEncoding[T string | []byte](input T) Encoding {
 		if bytes.HasPrefix(ibs, utf32LEBOM) {
 			return UTF32LittleEndian
 		}
-	}
-
-	if len(ibs) >= 3 && bytes.HasPrefix(ibs, utf8BOM) {
-		return UTF8
 	}
 
 	if bytes.HasPrefix(ibs, utf16BEBOM) {
@@ -140,17 +140,52 @@ func (e Encoding) Len() int {
 	}
 }
 
+// Bytes returns encoding bytes.
+func (e Encoding) Bytes() []byte {
+	switch e {
+	default:
+		return nil
+	case UTF8:
+		return utf8BOM
+	case UTF16BigEndian:
+		return utf16BEBOM
+	case UTF16LittleEndian:
+		return utf16LEBOM
+	case UTF32BigEndian:
+		return utf32BEBOM
+	case UTF32LittleEndian:
+		return utf32LEBOM
+	}
+}
+
 // Trim removes the BOM prefix from the input `s` based on the encoding `enc`.
 // Supports string or []byte inputs and returns the same type without the BOM.
 func Trim[T string | []byte](input T) (T, Encoding) {
-	bytes := []byte(input)
-	enc := DetectEncoding(bytes)
+	b := []byte(input)
+	enc := DetectEncoding(b)
 
 	if enc == Unknown {
 		return input, enc
 	}
 
-	return T(bytes[enc.Len():]), enc
+	return T(b[enc.Len():]), enc
+}
+
+// Prepend adds the corresponding Byte Order Mark (BOM) for a given encoding
+// to the beginning of a string or byte slice.
+// If the provided encoding is Unknown, the input is returned unmodified.
+func Prepend[T string | []byte](input T, enc Encoding) T {
+	if enc == Unknown {
+		return input
+	}
+
+	b := []byte(input)
+
+	if DetectEncoding(b) != Unknown {
+		return input
+	}
+
+	return T(append(enc.Bytes(), b...))
 }
 
 // Reader implements automatic BOM (Unicode Byte Order Mark) checking and
@@ -186,7 +221,7 @@ func (r *Reader) Read(buf []byte) (int, error) {
 	var bomErr error
 
 	r.once.Do(func() {
-		bytes, err := r.rd.Peek(maxBOMLen)
+		b, err := r.rd.Peek(maxBOMLen)
 		// do not error out in case underlying payload is too small
 		// still attempt to read fewer than n bytes.
 		if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
@@ -195,7 +230,7 @@ func (r *Reader) Read(buf []byte) (int, error) {
 			return
 		}
 
-		r.Enc = DetectEncoding(bytes)
+		r.Enc = DetectEncoding(b)
 		if r.Enc != Unknown {
 			_, err = r.rd.Discard(r.Enc.Len())
 			if err != nil {
