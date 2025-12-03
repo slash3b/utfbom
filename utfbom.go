@@ -47,6 +47,37 @@ const (
 	UTF32LittleEndian
 )
 
+// detectEncodingBytes is the internal implementation that works directly on []byte.
+func detectEncodingBytes(b []byte) Encoding {
+	if len(b) < 2 {
+		return Unknown
+	}
+
+	if len(b) >= 3 && bytes.HasPrefix(b, []byte{0xef, 0xbb, 0xbf}) {
+		return UTF8
+	}
+
+	if len(b) >= 4 {
+		if bytes.HasPrefix(b, []byte{0x00, 0x00, 0xfe, 0xff}) {
+			return UTF32BigEndian
+		}
+
+		if bytes.HasPrefix(b, []byte{0xff, 0xfe, 0x00, 0x00}) {
+			return UTF32LittleEndian
+		}
+	}
+
+	if bytes.HasPrefix(b, []byte{0xfe, 0xff}) {
+		return UTF16BigEndian
+	}
+
+	if bytes.HasPrefix(b, []byte{0xff, 0xfe}) {
+		return UTF16LittleEndian
+	}
+
+	return Unknown
+}
+
 // DetectEncoding inspects the initial bytes of a string or byte slice (T)
 // and returns the detected text encoding based on the presence of known BOMs (Byte Order Marks).
 // If no known BOM is found, it returns Unknown.
@@ -57,36 +88,8 @@ const (
 //   - UTF-16 Little Endian (BOM: 0xff 0xfe)
 //   - UTF-32 Big Endian (BOM: 0x00 0x00 0xfe 0xff)
 //   - UTF-32 Little Endian (BOM: 0xff 0xfe 0x00 0x00)
-func DetectEncoding[T string | []byte](input T) Encoding {
-	ibs := []byte(input)
-
-	if len(ibs) < 2 {
-		return Unknown
-	}
-
-	if len(ibs) >= 3 && bytes.HasPrefix(ibs, []byte{0xef, 0xbb, 0xbf}) {
-		return UTF8
-	}
-
-	if len(ibs) >= 4 {
-		if bytes.HasPrefix(ibs, []byte{0x00, 0x00, 0xfe, 0xff}) {
-			return UTF32BigEndian
-		}
-
-		if bytes.HasPrefix(ibs, []byte{0xff, 0xfe, 0x00, 0x00}) {
-			return UTF32LittleEndian
-		}
-	}
-
-	if bytes.HasPrefix(ibs, []byte{0xfe, 0xff}) {
-		return UTF16BigEndian
-	}
-
-	if bytes.HasPrefix(ibs, []byte{0xff, 0xfe}) {
-		return UTF16LittleEndian
-	}
-
-	return Unknown
+func DetectEncoding[T ~string | ~[]byte](input T) Encoding {
+	return detectEncodingBytes([]byte(input))
 }
 
 // AnyOf reports whether the Encoding value equals any of the given Encoding values.
@@ -101,7 +104,7 @@ func (e Encoding) AnyOf(es ...Encoding) bool {
 	return false
 }
 
-// Strings returns human-readable name of encoding.
+// String returns the human-readable name of the encoding.
 func (e Encoding) String() string {
 	switch e {
 	case UTF8:
@@ -151,11 +154,11 @@ func (e Encoding) Bytes() []byte {
 	}
 }
 
-// Trim removes the BOM prefix from the input `s` based on the encoding `enc`.
+// Trim removes the BOM prefix from the input.
 // Supports string or []byte inputs and returns the same type without the BOM.
-func Trim[T string | []byte](input T) (T, Encoding) {
+func Trim[T ~string | ~[]byte](input T) (T, Encoding) {
 	b := []byte(input)
-	enc := DetectEncoding(b)
+	enc := detectEncodingBytes(b)
 
 	if enc == Unknown {
 		return input, enc
@@ -167,14 +170,14 @@ func Trim[T string | []byte](input T) (T, Encoding) {
 // Prepend adds the corresponding Byte Order Mark (BOM) for a given encoding
 // to the beginning of a string or byte slice.
 // If the provided encoding is Unknown, the input is returned unmodified.
-func Prepend[T string | []byte](input T, enc Encoding) T {
+func Prepend[T ~string | ~[]byte](input T, enc Encoding) T {
 	if enc == Unknown {
 		return input
 	}
 
 	b := []byte(input)
 
-	if DetectEncoding(b) != Unknown {
+	if detectEncodingBytes(b) != Unknown {
 		return input
 	}
 
@@ -183,6 +186,8 @@ func Prepend[T string | []byte](input T, enc Encoding) T {
 
 // Reader implements automatic BOM (Unicode Byte Order Mark) checking and
 // removing as necessary for an io.Reader object.
+//
+// Reader is not safe for concurrent use.
 type Reader struct {
 	rd   *bufio.Reader
 	once sync.Once
@@ -191,6 +196,7 @@ type Reader struct {
 }
 
 // NewReader wraps an incoming reader.
+// Passing a nil reader will cause a panic on the first Read call.
 func NewReader(rd io.Reader) *Reader {
 	return &Reader{
 		rd:   bufio.NewReader(rd),
@@ -200,10 +206,8 @@ func NewReader(rd io.Reader) *Reader {
 }
 
 // Read implements the io.Reader interface.
-// On the first read call, it reads from the underlying Reader, detects and removes any Byte Order Mark (BOM).
-// Subsequent calls delegate directly to the underlying Reader without BOM handling.
-// Read is only safe for concurrent use during the first call due to sync.Once; after that, thread-safety
-// depends on the underlying Reader. It is best to assume unsafe concurrent use.
+// On the first call, it detects and removes any Byte Order Mark (BOM).
+// Subsequent calls delegate directly to the underlying Reader.
 func (r *Reader) Read(buf []byte) (int, error) {
 	const maxBOMLen = 4
 
