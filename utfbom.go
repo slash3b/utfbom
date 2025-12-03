@@ -47,8 +47,19 @@ const (
 	UTF32LittleEndian
 )
 
-// detectEncodingBytes is the internal implementation that works directly on []byte.
-func detectEncodingBytes(b []byte) Encoding {
+// DetectEncoding inspects the initial bytes of a string or byte slice (T)
+// and returns the detected text encoding based on the presence of known BOMs (Byte Order Marks).
+// If no known BOM is found, it returns Unknown.
+//
+// Supported encodings:
+//   - UTF-8 (BOM: 0xef 0xbb 0xbf)
+//   - UTF-16 Big Endian (BOM: 0xfe 0xff)
+//   - UTF-16 Little Endian (BOM: 0xff 0xfe)
+//   - UTF-32 Big Endian (BOM: 0x00 0x00 0xfe 0xff)
+//   - UTF-32 Little Endian (BOM: 0xff 0xfe 0x00 0x00)
+func DetectEncoding[T ~string | ~[]byte](input T) Encoding {
+	b := []byte(input)
+
 	if len(b) < 2 {
 		return Unknown
 	}
@@ -76,20 +87,6 @@ func detectEncodingBytes(b []byte) Encoding {
 	}
 
 	return Unknown
-}
-
-// DetectEncoding inspects the initial bytes of a string or byte slice (T)
-// and returns the detected text encoding based on the presence of known BOMs (Byte Order Marks).
-// If no known BOM is found, it returns Unknown.
-//
-// Supported encodings:
-//   - UTF-8 (BOM: 0xef 0xbb 0xbf)
-//   - UTF-16 Big Endian (BOM: 0xfe 0xff)
-//   - UTF-16 Little Endian (BOM: 0xff 0xfe)
-//   - UTF-32 Big Endian (BOM: 0x00 0x00 0xfe 0xff)
-//   - UTF-32 Little Endian (BOM: 0xff 0xfe 0x00 0x00)
-func DetectEncoding[T ~string | ~[]byte](input T) Encoding {
-	return detectEncodingBytes([]byte(input))
 }
 
 // AnyOf reports whether the Encoding value equals any of the given Encoding values.
@@ -158,7 +155,7 @@ func (e Encoding) Bytes() []byte {
 // Supports string or []byte inputs and returns the same type without the BOM.
 func Trim[T ~string | ~[]byte](input T) (T, Encoding) {
 	b := []byte(input)
-	enc := detectEncodingBytes(b)
+	enc := DetectEncoding(b)
 
 	if enc == Unknown {
 		return input, enc
@@ -177,7 +174,7 @@ func Prepend[T ~string | ~[]byte](input T, enc Encoding) T {
 
 	b := []byte(input)
 
-	if detectEncodingBytes(b) != Unknown {
+	if DetectEncoding(b) != Unknown {
 		return input
 	}
 
