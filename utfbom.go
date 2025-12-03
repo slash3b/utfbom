@@ -13,14 +13,7 @@ import (
 	"sync"
 )
 
-var (
-	_          io.Reader = (*Reader)(nil)
-	utf8BOM              = []byte{0xef, 0xbb, 0xbf}
-	utf16BEBOM           = []byte{0xfe, 0xff}
-	utf16LEBOM           = []byte{0xff, 0xfe}
-	utf32BEBOM           = []byte{0x00, 0x00, 0xfe, 0xff}
-	utf32LEBOM           = []byte{0xff, 0xfe, 0x00, 0x00}
-)
+var _ io.Reader = (*Reader)(nil)
 
 // ErrRead helps to trace error origin.
 var ErrRead = errors.New("utfbom: I/O error during BOM processing")
@@ -71,25 +64,25 @@ func DetectEncoding[T string | []byte](input T) Encoding {
 		return Unknown
 	}
 
-	if len(ibs) >= 3 && bytes.HasPrefix(ibs, utf8BOM) {
+	if len(ibs) >= 3 && bytes.HasPrefix(ibs, []byte{0xef, 0xbb, 0xbf}) {
 		return UTF8
 	}
 
 	if len(ibs) >= 4 {
-		if bytes.HasPrefix(ibs, utf32BEBOM) {
+		if bytes.HasPrefix(ibs, []byte{0x00, 0x00, 0xfe, 0xff}) {
 			return UTF32BigEndian
 		}
 
-		if bytes.HasPrefix(ibs, utf32LEBOM) {
+		if bytes.HasPrefix(ibs, []byte{0xff, 0xfe, 0x00, 0x00}) {
 			return UTF32LittleEndian
 		}
 	}
 
-	if bytes.HasPrefix(ibs, utf16BEBOM) {
+	if bytes.HasPrefix(ibs, []byte{0xfe, 0xff}) {
 		return UTF16BigEndian
 	}
 
-	if bytes.HasPrefix(ibs, utf16LEBOM) {
+	if bytes.HasPrefix(ibs, []byte{0xff, 0xfe}) {
 		return UTF16LittleEndian
 	}
 
@@ -146,15 +139,15 @@ func (e Encoding) Bytes() []byte {
 	default:
 		return nil
 	case UTF8:
-		return utf8BOM
+		return []byte{0xef, 0xbb, 0xbf}
 	case UTF16BigEndian:
-		return utf16BEBOM
+		return []byte{0xfe, 0xff}
 	case UTF16LittleEndian:
-		return utf16LEBOM
+		return []byte{0xff, 0xfe}
 	case UTF32BigEndian:
-		return utf32BEBOM
+		return []byte{0x00, 0x00, 0xfe, 0xff}
 	case UTF32LittleEndian:
-		return utf32LEBOM
+		return []byte{0xff, 0xfe, 0x00, 0x00}
 	}
 }
 
