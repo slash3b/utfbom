@@ -443,6 +443,34 @@ func TestEncoding_Bytes(t *testing.T) {
 	}
 }
 
+// TestBytes_NoAliasing checks that bytes returned by Bytes() are immutable.
+func TestBytes_NoAliasing(t *testing.T) {
+	t.Parallel()
+
+	encodings := []utfbom.Encoding{
+		utfbom.UTF8,
+		utfbom.UTF16BigEndian,
+		utfbom.UTF16LittleEndian,
+		utfbom.UTF32BigEndian,
+		utfbom.UTF32LittleEndian,
+	}
+
+	for _, enc := range encodings {
+		t.Run(enc.String(), func(t *testing.T) {
+			t.Parallel()
+
+			original := enc.Bytes()
+			originalCopy := make([]byte, len(original))
+			copy(originalCopy, original)
+
+			original[0] = 0x00
+
+			fresh := enc.Bytes()
+			be.Equal(t, fresh, originalCopy)
+		})
+	}
+}
+
 func TestPrepend(t *testing.T) {
 	t.Parallel()
 
