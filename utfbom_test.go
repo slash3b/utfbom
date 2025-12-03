@@ -443,6 +443,34 @@ func TestEncoding_Bytes(t *testing.T) {
 	}
 }
 
+// TestBytes_NoAliasing checks that bytes returned by Bytes() are immutable.
+func TestBytes_NoAliasing(t *testing.T) {
+	t.Parallel()
+
+	encodings := []utfbom.Encoding{
+		utfbom.UTF8,
+		utfbom.UTF16BigEndian,
+		utfbom.UTF16LittleEndian,
+		utfbom.UTF32BigEndian,
+		utfbom.UTF32LittleEndian,
+	}
+
+	for _, enc := range encodings {
+		t.Run(enc.String(), func(t *testing.T) {
+			t.Parallel()
+
+			original := enc.Bytes()
+			originalCopy := make([]byte, len(original))
+			copy(originalCopy, original)
+
+			original[0] = 0x00
+
+			fresh := enc.Bytes()
+			be.Equal(t, fresh, originalCopy)
+		})
+	}
+}
+
 func TestPrepend(t *testing.T) {
 	t.Parallel()
 
@@ -486,4 +514,72 @@ func TestPrepend(t *testing.T) {
 			})
 		}
 	})
+}
+
+type CustomString string
+
+type CustomBytes []byte
+
+func TestDetectEncoding_TypeAliases(t *testing.T) {
+	t.Parallel()
+
+	t.Run("custom_string", func(t *testing.T) {
+		input := CustomString("\ufeffhello")
+		enc := utfbom.DetectEncoding(input)
+		be.Equal(t, enc, utfbom.UTF8)
+	})
+
+	t.Run("custom_bytes", func(t *testing.T) {
+		input := CustomBytes([]byte{0xfe, 0xff, 'h', 'i'})
+		enc := utfbom.DetectEncoding(input)
+		be.Equal(t, enc, utfbom.UTF16BigEndian)
+	})
+}
+
+func TestTrim_TypeAliases(t *testing.T) {
+	t.Parallel()
+
+	t.Run("custom_string", func(t *testing.T) {
+		input := CustomString("\ufeffhello")
+		out, enc := utfbom.Trim(input)
+		be.Equal(t, enc, utfbom.UTF8)
+		be.Equal(t, out, CustomString("hello"))
+	})
+
+	t.Run("custom_bytes", func(t *testing.T) {
+		input := CustomBytes([]byte{0xfe, 0xff, 'h', 'i'})
+		out, enc := utfbom.Trim(input)
+		be.Equal(t, enc, utfbom.UTF16BigEndian)
+		be.Equal(t, out, CustomBytes([]byte{'h', 'i'}))
+	})
+}
+
+func TestPrepend_TypeAliases(t *testing.T) {
+	t.Parallel()
+
+	t.Run("custom_string", func(t *testing.T) {
+		input := CustomString("hello")
+		out := utfbom.Prepend(input, utfbom.UTF8)
+		be.Equal(t, out, CustomString("\ufeffhello"))
+	})
+
+	t.Run("custom_bytes", func(t *testing.T) {
+		input := CustomBytes([]byte{'h', 'i'})
+		out := utfbom.Prepend(input, utfbom.UTF16BigEndian)
+		be.Equal(t, out, CustomBytes([]byte{0xfe, 0xff, 'h', 'i'}))
+	})
+}
+
+func TestNewReader_NilPanics(t *testing.T) {
+	t.Parallel()
+
+	rd := utfbom.NewReader(nil)
+
+	defer func() {
+		r := recover()
+		be.True(t, r != nil)
+	}()
+
+	buf := make([]byte, 10)
+	_, _ = rd.Read(buf)
 }
