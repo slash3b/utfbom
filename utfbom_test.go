@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/csv"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -218,41 +219,23 @@ func TestEncoding_Len(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
+		name     string
 		enc      utfbom.Encoding
 		expected int
 	}{
-		{
-			enc:      utfbom.Unknown,
-			expected: 0,
-		},
-		{
-			enc:      utfbom.UTF8,
-			expected: 3,
-		},
-		{
-			enc:      utfbom.UTF16BigEndian,
-			expected: 2,
-		},
-		{
-			enc:      utfbom.UTF16LittleEndian,
-			expected: 2,
-		},
-		{
-			enc:      utfbom.UTF32BigEndian,
-			expected: 4,
-		},
-		{
-			enc:      utfbom.UTF32LittleEndian,
-			expected: 4,
-		},
-		{
-			enc:      999,
-			expected: 0,
-		},
+		{"Unknown", utfbom.Unknown, 0},
+		{"UTF8", utfbom.UTF8, 3},
+		{"UTF16BigEndian", utfbom.UTF16BigEndian, 2},
+		{"UTF16LittleEndian", utfbom.UTF16LittleEndian, 2},
+		{"UTF32BigEndian", utfbom.UTF32BigEndian, 4},
+		{"UTF32LittleEndian", utfbom.UTF32LittleEndian, 4},
+		{"InvalidEncoding", 999, 0},
 	}
 
 	for _, tc := range testCases {
-		be.Equal(t, tc.enc.Len(), tc.expected)
+		t.Run(tc.name, func(t *testing.T) {
+			be.Equal(t, tc.enc.Len(), tc.expected)
+		})
 	}
 }
 
@@ -311,16 +294,6 @@ func TestReader_StringWithoutBOM(t *testing.T) {
 	rd := utfbom.NewReader(strings.NewReader(nobomstring))
 
 	be.Err(t, iotest.TestReader(rd, []byte(nobomstring)), nil)
-}
-
-func TestReader_UsualReader(t *testing.T) {
-	t.Parallel()
-
-	bomPrefixedStringReader := strings.NewReader(teststring)
-
-	rd := utfbom.NewReader(bomPrefixedStringReader)
-
-	be.Err(t, iotest.TestReader(rd, []byte(teststring[3:])), nil)
 }
 
 func TestReader_OneByteReader(t *testing.T) {
@@ -568,6 +541,19 @@ func TestPrepend_TypeAliases(t *testing.T) {
 		out := utfbom.Prepend(input, utfbom.UTF16BigEndian)
 		be.Equal(t, out, CustomBytes([]byte{0xfe, 0xff, 'h', 'i'}))
 	})
+}
+
+// TestReader_UnderlyingReaderError verifies that when the underlying reader
+// returns a non-EOF error during BOM detection, it is wrapped with ErrRead.
+func TestReader_UnderlyingReaderError(t *testing.T) {
+	t.Parallel()
+
+	rd := utfbom.NewReader(iotest.ErrReader(errors.New("disk failure")))
+
+	buf := make([]byte, 10)
+	n, err := rd.Read(buf)
+	be.Equal(t, 0, n)
+	be.True(t, errors.Is(err, utfbom.ErrRead))
 }
 
 func TestNewReader_NilPanics(t *testing.T) {

@@ -19,6 +19,8 @@ var _ io.Reader = (*Reader)(nil)
 // ErrRead helps to trace error origin.
 var ErrRead = errors.New("utfbom: I/O error during BOM processing")
 
+const maxBOMLen = 4
+
 // Encoding is a character encoding standard.
 type Encoding int
 
@@ -59,6 +61,10 @@ const (
 //   - UTF-32 Big Endian (BOM: 0x00 0x00 0xfe 0xff)
 //   - UTF-32 Little Endian (BOM: 0xff 0xfe 0x00 0x00)
 func DetectEncoding[T ~string | ~[]byte](input T) Encoding {
+	if len(input) > maxBOMLen {
+		input = input[:maxBOMLen]
+	}
+
 	b := []byte(input)
 
 	if len(b) < 2 {
@@ -149,31 +155,28 @@ func (e Encoding) Bytes() []byte {
 // Trim removes the BOM prefix from the input.
 // Supports string or []byte inputs and returns the same type without the BOM.
 func Trim[T ~string | ~[]byte](input T) (T, Encoding) {
-	b := []byte(input)
-	enc := DetectEncoding(b)
+	enc := DetectEncoding(input)
 
 	if enc == Unknown {
 		return input, enc
 	}
 
-	return T(b[enc.Len():]), enc
+	return input[enc.Len():], enc
 }
 
 // Prepend adds the corresponding Byte Order Mark (BOM) for a given encoding
 // to the beginning of a string or byte slice.
-// If the provided encoding is Unknown, the input is returned unmodified.
+// The input is returned unmodified if enc is Unknown or if the input already has any BOM.
 func Prepend[T ~string | ~[]byte](input T, enc Encoding) T {
 	if enc == Unknown {
 		return input
 	}
 
-	b := []byte(input)
-
-	if DetectEncoding(b) != Unknown {
+	if DetectEncoding(input) != Unknown {
 		return input
 	}
 
-	return T(append(enc.Bytes(), b...))
+	return T(append(enc.Bytes(), []byte(input)...))
 }
 
 // Reader implements automatic BOM (Unicode Byte Order Mark) checking and
@@ -201,8 +204,6 @@ func NewReader(rd io.Reader) *Reader {
 // On the first call, it detects and removes any Byte Order Mark (BOM).
 // Subsequent calls delegate directly to the underlying Reader.
 func (r *Reader) Read(buf []byte) (int, error) {
-	const maxBOMLen = 4
-
 	if len(buf) == 0 {
 		return 0, nil
 	}
