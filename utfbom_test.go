@@ -172,21 +172,21 @@ func ExampleReader() {
 	urd := utfbom.NewReader(bytes.NewReader([]byte(csvFile)))
 	crd := csv.NewReader(urd)
 
-	out := ""
+	var out strings.Builder
 	for {
 		row, err := crd.Read()
 		if err != nil {
 			break
 		}
 
-		out += strings.Join(row, ",")
+		out.WriteString(strings.Join(row, ","))
 	}
 
 	fmt.Println("detected encoding:", urd.Enc)
 	fmt.Println("before")
 	fmt.Println(hex.Dump([]byte(csvFile)))
 	fmt.Println("after")
-	fmt.Println(hex.Dump([]byte(out)))
+	fmt.Println(hex.Dump([]byte(out.String())))
 
 	// output:
 	//detected encoding: UTF8
