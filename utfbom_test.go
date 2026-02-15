@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/csv"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -540,6 +541,19 @@ func TestPrepend_TypeAliases(t *testing.T) {
 		out := utfbom.Prepend(input, utfbom.UTF16BigEndian)
 		be.Equal(t, out, CustomBytes([]byte{0xfe, 0xff, 'h', 'i'}))
 	})
+}
+
+// TestReader_UnderlyingReaderError verifies that when the underlying reader
+// returns a non-EOF error during BOM detection, it is wrapped with ErrRead.
+func TestReader_UnderlyingReaderError(t *testing.T) {
+	t.Parallel()
+
+	rd := utfbom.NewReader(iotest.ErrReader(errors.New("disk failure")))
+
+	buf := make([]byte, 10)
+	n, err := rd.Read(buf)
+	be.Equal(t, 0, n)
+	be.True(t, errors.Is(err, utfbom.ErrRead))
 }
 
 func TestNewReader_NilPanics(t *testing.T) {
