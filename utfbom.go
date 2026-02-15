@@ -21,7 +21,6 @@ var ErrRead = errors.New("utfbom: I/O error during BOM processing")
 
 const maxBOMLen = 4
 
-
 // Encoding is a character encoding standard.
 type Encoding int
 
@@ -62,9 +61,9 @@ const (
 //   - UTF-32 Big Endian (BOM: 0x00 0x00 0xfe 0xff)
 //   - UTF-32 Little Endian (BOM: 0xff 0xfe 0x00 0x00)
 func DetectEncoding[T ~string | ~[]byte](input T) Encoding {
-    if len(input) > maxBOMLen {
-        input = input[:maxBOMLen]
-    }
+	if len(input) > maxBOMLen {
+		input = input[:maxBOMLen]
+	}
 
 	b := []byte(input)
 
@@ -162,7 +161,7 @@ func Trim[T ~string | ~[]byte](input T) (T, Encoding) {
 		return input, enc
 	}
 
-	return T(b[enc.Len():]), enc
+	return input[enc.Len():], enc
 }
 
 // Prepend adds the corresponding Byte Order Mark (BOM) for a given encoding
