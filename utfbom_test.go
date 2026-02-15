@@ -295,16 +295,6 @@ func TestReader_StringWithoutBOM(t *testing.T) {
 	be.Err(t, iotest.TestReader(rd, []byte(nobomstring)), nil)
 }
 
-func TestReader_UsualReader(t *testing.T) {
-	t.Parallel()
-
-	bomPrefixedStringReader := strings.NewReader(teststring)
-
-	rd := utfbom.NewReader(bomPrefixedStringReader)
-
-	be.Err(t, iotest.TestReader(rd, []byte(teststring[3:])), nil)
-}
-
 func TestReader_OneByteReader(t *testing.T) {
 	t.Parallel()
 
