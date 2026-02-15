@@ -172,17 +172,11 @@ func Prepend[T ~string | ~[]byte](input T, enc Encoding) T {
 		return input
 	}
 
-	if len(input) > maxBOMLen {
-		input = input[:maxBOMLen]
-	}
-
-	b := []byte(input)
-
-	if DetectEncoding(b) != Unknown {
+	if DetectEncoding(input) != Unknown {
 		return input
 	}
 
-	return T(append(enc.Bytes(), b...))
+	return T(append(enc.Bytes(), []byte(input)...))
 }
 
 // Reader implements automatic BOM (Unicode Byte Order Mark) checking and
