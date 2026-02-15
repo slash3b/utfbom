@@ -1,3 +1,5 @@
+This is a **fork** of [github.com/dimchansky/utfbom](https://github.com/dimchansky/utfbom).
+
 # utfbom
 [![Godoc](https://godoc.org/github.com/slash3b/utfbom?status.png)](https://godoc.org/github.com/slash3b/utfbom) 
 [![License](https://img.shields.io/:license-apache-blue.svg)](https://opensource.org/licenses/Apache-2.0) 
