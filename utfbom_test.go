@@ -218,41 +218,23 @@ func TestEncoding_Len(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
+		name     string
 		enc      utfbom.Encoding
 		expected int
 	}{
-		{
-			enc:      utfbom.Unknown,
-			expected: 0,
-		},
-		{
-			enc:      utfbom.UTF8,
-			expected: 3,
-		},
-		{
-			enc:      utfbom.UTF16BigEndian,
-			expected: 2,
-		},
-		{
-			enc:      utfbom.UTF16LittleEndian,
-			expected: 2,
-		},
-		{
-			enc:      utfbom.UTF32BigEndian,
-			expected: 4,
-		},
-		{
-			enc:      utfbom.UTF32LittleEndian,
-			expected: 4,
-		},
-		{
-			enc:      999,
-			expected: 0,
-		},
+		{"Unknown", utfbom.Unknown, 0},
+		{"UTF8", utfbom.UTF8, 3},
+		{"UTF16BigEndian", utfbom.UTF16BigEndian, 2},
+		{"UTF16LittleEndian", utfbom.UTF16LittleEndian, 2},
+		{"UTF32BigEndian", utfbom.UTF32BigEndian, 4},
+		{"UTF32LittleEndian", utfbom.UTF32LittleEndian, 4},
+		{"InvalidEncoding", 999, 0},
 	}
 
 	for _, tc := range testCases {
-		be.Equal(t, tc.enc.Len(), tc.expected)
+		t.Run(tc.name, func(t *testing.T) {
+			be.Equal(t, tc.enc.Len(), tc.expected)
+		})
 	}
 }
 
