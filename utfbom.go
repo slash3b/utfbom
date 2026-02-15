@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"slices"
 	"sync"
 )
 
@@ -92,13 +93,7 @@ func DetectEncoding[T ~string | ~[]byte](input T) Encoding {
 // AnyOf reports whether the Encoding value equals any of the given Encoding values.
 // It returns true if a match is found, otherwise false.
 func (e Encoding) AnyOf(es ...Encoding) bool {
-	for _, enc := range es {
-		if enc == e {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(es, e)
 }
 
 // String returns the human-readable name of the encoding.
