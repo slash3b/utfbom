@@ -41,7 +41,7 @@ This library supports detection and trimming of the following BOM prefixes:
     )
 
     func main() {
-        a := "\ufefehey"
+        a := "\ufeffhey"
         b := "hey"
 
         fmt.Println(a == b)
@@ -54,7 +54,7 @@ This library supports detection and trimming of the following BOM prefixes:
     // Output:
     // false
     // false
-    // 00000000  ef bb be 68 65 79                                 |...hey|
+    // 00000000  ef bb bf 68 65 79                                 |...hey|
     // 00000000  68 65 79                                          |hey|
 ```
 
