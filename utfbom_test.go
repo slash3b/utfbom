@@ -569,3 +569,32 @@ func TestNewReader_NilPanics(t *testing.T) {
 	buf := make([]byte, 10)
 	_, _ = rd.Read(buf)
 }
+
+// failOnceReader fails the first Read and then delegates to the wrapped reader.
+type failOnceReader struct {
+	rd     io.Reader
+	failed bool
+}
+
+func (f *failOnceReader) Read(p []byte) (int, error) {
+	if !f.failed {
+		f.failed = true
+
+		return 0, errors.New("temporary failure")
+	}
+
+	return f.rd.Read(p)
+}
+
+func TestReader_RetryAfterError(t *testing.T) {
+	t.Parallel()
+
+	rd := utfbom.NewReader(&failOnceReader{rd: strings.NewReader(teststring), failed: false})
+
+	n, err := rd.Read(make([]byte, 16))
+	be.Equal(t, 0, n)
+	be.Err(t, err, utfbom.ErrRead)
+
+	be.Err(t, iotest.TestReader(rd, []byte(teststring[3:])), nil)
+	be.Equal(t, utfbom.UTF8, rd.Enc)
+}
