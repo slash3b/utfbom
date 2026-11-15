@@ -11,7 +11,6 @@ import (
 	"errors"
 	"io"
 	"slices"
-	"sync"
 )
 
 var _ io.Reader = (*Reader)(nil)
@@ -184,8 +183,8 @@ func Prepend[T ~string | ~[]byte](input T, enc Encoding) T {
 //
 // Reader is not safe for concurrent use.
 type Reader struct {
-	rd   *bufio.Reader
-	once sync.Once
+	rd       *bufio.Reader
+	detected bool
 	// Enc will be available after first read
 	Enc Encoding
 }
@@ -194,9 +193,9 @@ type Reader struct {
 // Passing a nil reader will cause a panic on the first Read call.
 func NewReader(rd io.Reader) *Reader {
 	return &Reader{
-		rd:   bufio.NewReader(rd),
-		once: sync.Once{},
-		Enc:  Unknown,
+		rd:       bufio.NewReader(rd),
+		detected: false,
+		Enc:      Unknown,
 	}
 }
 
@@ -208,30 +207,34 @@ func (r *Reader) Read(buf []byte) (int, error) {
 		return 0, nil
 	}
 
-	var bomErr error
-
-	r.once.Do(func() {
-		b, err := r.rd.Peek(maxBOMLen)
-		// do not error out in case underlying payload is too small
-		// still attempt to read fewer than n bytes.
-		if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
-			bomErr = errors.Join(ErrRead, err)
-
-			return
+	if !r.detected {
+		err := r.detect()
+		if err != nil {
+			return 0, err
 		}
-
-		r.Enc = DetectEncoding(b)
-		if r.Enc != Unknown {
-			_, err = r.rd.Discard(r.Enc.Len())
-			if err != nil {
-				bomErr = errors.Join(ErrRead, err)
-			}
-		}
-	})
-
-	if bomErr != nil {
-		return 0, bomErr
 	}
 
 	return r.rd.Read(buf)
+}
+
+// detect checks for a BOM and discards it.
+// A failed attempt is retried on the next Read.
+func (r *Reader) detect() error {
+	b, err := r.rd.Peek(maxBOMLen)
+	// do not error out in case underlying payload is too small
+	// still attempt to read fewer than n bytes.
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+		return errors.Join(ErrRead, err)
+	}
+
+	r.Enc = DetectEncoding(b)
+
+	_, err = r.rd.Discard(r.Enc.Len())
+	if err != nil {
+		return errors.Join(ErrRead, err)
+	}
+
+	r.detected = true
+
+	return nil
 }
