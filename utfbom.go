@@ -211,7 +211,7 @@ func (r *Reader) Read(buf []byte) (int, error) {
 	var bomErr error
 
 	r.once.Do(func() {
-		b, err := r.rd.Peek(maxBOMLen)
+		b, err := r.peekBOM()
 		// do not error out in case underlying payload is too small
 		// still attempt to read fewer than n bytes.
 		if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
@@ -234,4 +234,34 @@ func (r *Reader) Read(buf []byte) (int, error) {
 	}
 
 	return r.rd.Read(buf)
+}
+
+// peekBOM peeks only as many bytes as needed to decide whether a BOM is present,
+// so Read does not wait for bytes that the stream may never deliver.
+func (r *Reader) peekBOM() ([]byte, error) {
+	var (
+		b   []byte
+		err error
+	)
+
+	for n := 1; n <= maxBOMLen; n++ {
+		b, err = r.rd.Peek(n)
+		if err != nil || !isBOMPrefix(b) {
+			break
+		}
+	}
+
+	return b, err
+}
+
+// isBOMPrefix reports whether b is an incomplete prefix of a longer BOM.
+func isBOMPrefix(b []byte) bool {
+	for _, enc := range []Encoding{UTF8, UTF16BigEndian, UTF16LittleEndian, UTF32BigEndian, UTF32LittleEndian} {
+		bom := enc.Bytes()
+		if len(bom) > len(b) && bytes.HasPrefix(bom, b) {
+			return true
+		}
+	}
+
+	return false
 }
