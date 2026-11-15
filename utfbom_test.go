@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 	"testing/iotest"
+	"time"
 
 	"github.com/nalgeon/be"
 	"github.com/slash3b/utfbom"
@@ -568,4 +569,52 @@ func TestNewReader_NilPanics(t *testing.T) {
 
 	buf := make([]byte, 10)
 	_, _ = rd.Read(buf)
+}
+
+func TestReader_ShortStreamDoesNotBlock(t *testing.T) {
+	t.Parallel()
+
+	pr, pw := io.Pipe()
+	defer pr.Close()
+
+	// fewer than 4 bytes, writer stays open
+	go func() { _, _ = pw.Write([]byte("ok\n")) }()
+
+	rd := utfbom.NewReader(pr)
+	got := make(chan string, 1)
+
+	go func() {
+		buf := make([]byte, 16)
+		n, _ := rd.Read(buf)
+		got <- string(buf[:n])
+	}()
+
+	select {
+	case s := <-got:
+		be.Equal(t, "ok\n", s)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Read blocked waiting for more bytes")
+	}
+}
+
+func TestReader_AllEncodings(t *testing.T) {
+	t.Parallel()
+
+	encs := []utfbom.Encoding{
+		utfbom.UTF8,
+		utfbom.UTF16BigEndian,
+		utfbom.UTF16LittleEndian,
+		utfbom.UTF32BigEndian,
+		utfbom.UTF32LittleEndian,
+	}
+
+	for _, enc := range encs {
+		payload := []byte{0x01, 0x02, 0x03, 0x04}
+		input := append(enc.Bytes(), payload...)
+
+		rd := utfbom.NewReader(iotest.OneByteReader(bytes.NewReader(input)))
+
+		be.Err(t, iotest.TestReader(rd, payload), nil)
+		be.Equal(t, enc, rd.Enc)
+	}
 }
